@@ -1,18 +1,17 @@
-[gd_resource type="Resource" script_class="UnitStats" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="UnitStats" format=3]
 
-[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="1_stats"]
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_2ccca"]
+[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="2_il8jy"]
 
 [resource]
-script = ExtResource("1_stats")
+script = ExtResource("2_il8jy")
 display_name = "Goblin"
-is_hero = false
 max_hp = 7
 armor_class = 15
 attack_bonus = 4
 weapon_name = "scimitar"
-damage_dice_count = 1
-damage_die = 6
 damage_bonus = 2
 speed = 8
 color = Color(0.35, 0.5, 0.2, 1)
 model_height = 0.75
+dex_save = 2

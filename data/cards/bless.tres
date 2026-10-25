@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CardData" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_y1r6o"]
+
+[resource]
+script = ExtResource("1_y1r6o")
+title = "Bless"
+description = "Heroes within 6 squares add a d4 to their attack rolls for 3 rounds."
+timing = 1
+target = 0
+effect = 6
+card_range = 6
+duration = 3

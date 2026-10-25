@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="CardData" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_embvg"]
+
+[resource]
+script = ExtResource("1_embvg")
+title = "Fire Bolt"
+description = "Range 8. Spell attack against AC for d10 fire damage."
+effect = 2
+card_range = 8
+die = 10

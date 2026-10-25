@@ -16,3 +16,12 @@ extends Resource
 @export var speed: int = 0
 @export var color: Color = Color.WHITE
 @export var model_height: float = 1.0
+
+@export_group("Magic and saves")
+@export var spell_attack_bonus: int = 0
+@export var spell_save_dc: int = 10
+@export var dex_save: int = 0
+@export var is_undead: bool = false
+
+@export_group("Cards")
+@export var cards: Array[CardData] = []

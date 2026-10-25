@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="CardData" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_dn167"]
+
+[resource]
+script = ExtResource("1_dn167")
+title = "Sleep"
+description = "Range 8. Living monsters in a 3x3 area fall asleep for 2 turns. Damage wakes them."
+timing = 1
+target = 3
+effect = 7
+card_range = 8
+duration = 2
+area_radius = 1

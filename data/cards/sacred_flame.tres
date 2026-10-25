@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="CardData" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_1wilt"]
+
+[resource]
+script = ExtResource("1_1wilt")
+title = "Sacred Flame"
+description = "Range 6. The target makes a Dex save or takes d8. Undead take 2d8."
+effect = 3
+card_range = 6
+die = 8

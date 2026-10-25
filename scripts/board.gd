@@ -14,6 +14,8 @@ var _highlights: Array[MeshInstance3D] = []
 var _hover: MeshInstance3D
 var _move_material: StandardMaterial3D
 var _attack_material: StandardMaterial3D
+var _ally_material: StandardMaterial3D
+var _area_material: StandardMaterial3D
 
 
 func build(w: int, h: int, pillars: Array[Vector2i]) -> void:
@@ -47,6 +49,8 @@ func build(w: int, h: int, pillars: Array[Vector2i]) -> void:
 
 	_move_material = _highlight_material(Color(0.45, 0.75, 1.0, 0.4))
 	_attack_material = _highlight_material(Color(0.85, 0.15, 0.1, 0.45))
+	_ally_material = _highlight_material(Color(0.3, 0.9, 0.4, 0.4))
+	_area_material = _highlight_material(Color(0.6, 0.35, 0.95, 0.45))
 	_hover = _make_highlight(_highlight_material(Color(1, 1, 1, 0.25)))
 	_hover.visible = false
 
@@ -69,6 +73,23 @@ func is_walkable(cell: Vector2i) -> bool:
 
 static func are_adjacent(a: Vector2i, b: Vector2i) -> bool:
 	return absi(a.x - b.x) + absi(a.y - b.y) == 1
+
+
+## Range in squares, counting a diagonal step as one (like DnD on a grid).
+static func distance(a: Vector2i, b: Vector2i) -> int:
+	return maxi(absi(a.x - b.x), absi(a.y - b.y))
+
+
+## True if no pillar or wall stands on the line between two squares.
+## Figures do not block sight.
+func has_line_of_sight(a: Vector2i, b: Vector2i) -> bool:
+	var steps := distance(a, b) * 2
+	for i in range(1, steps):
+		var p := Vector2(a).lerp(Vector2(b), float(i) / steps)
+		var c := Vector2i(roundi(p.x), roundi(p.y))
+		if c != a and c != b and not is_walkable(c):
+			return false
+	return true
 
 
 ## Breadth-first search from `start`, never entering walls or `occupied` cells.
@@ -123,8 +144,16 @@ func show_move_cells(cells: Array) -> void:
 	_show_cells(cells, _move_material)
 
 
-func show_attack_cells(cells: Array) -> void:
-	_show_cells(cells, _attack_material, false)
+func show_attack_cells(cells: Array, clear_first := false) -> void:
+	_show_cells(cells, _attack_material, clear_first)
+
+
+func show_ally_cells(cells: Array) -> void:
+	_show_cells(cells, _ally_material)
+
+
+func show_area_cells(cells: Array) -> void:
+	_show_cells(cells, _area_material, false)
 
 
 func clear_highlights() -> void:

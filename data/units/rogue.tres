@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="UnitStats" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_8lnic"]
+[ext_resource type="Resource" path="res://data/cards/sneak_attack.tres" id="2_m8i6r"]
+[ext_resource type="Resource" path="res://data/cards/dash.tres" id="3_arcgp"]
+[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="4_r6cha"]
+
+[resource]
+script = ExtResource("4_r6cha")
+display_name = "Rogue"
+is_hero = true
+armor_class = 14
+attack_bonus = 5
+weapon_name = "short sword"
+damage_bonus = 3
+color = Color(0.25, 0.3, 0.25, 1)
+model_height = 0.9
+dex_save = 5
+cards = Array[ExtResource("1_8lnic")]([ExtResource("2_m8i6r"), ExtResource("3_arcgp")])

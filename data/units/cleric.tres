@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="UnitStats" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_f46co"]
+[ext_resource type="Resource" path="res://data/cards/sacred_flame.tres" id="2_q81oh"]
+[ext_resource type="Resource" path="res://data/cards/cure_wounds.tres" id="3_elanx"]
+[ext_resource type="Resource" path="res://data/cards/bless.tres" id="4_amwnj"]
+[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="5_kmhhb"]
+
+[resource]
+script = ExtResource("5_kmhhb")
+display_name = "Cleric"
+is_hero = true
+armor_class = 16
+attack_bonus = 4
+weapon_name = "mace"
+damage_bonus = 2
+color = Color(0.75, 0.68, 0.45, 1)
+model_height = 0.95
+spell_save_dc = 13
+cards = Array[ExtResource("1_f46co")]([ExtResource("2_q81oh"), ExtResource("3_elanx"), ExtResource("4_amwnj")])

@@ -7,7 +7,7 @@ extends Node3D
 
 @export var start_yaw := 30.0
 @export var start_pitch := -55.0
-@export var start_distance := 12.0
+@export var start_distance := 15.0
 @export var min_pitch := -88.0
 @export var max_pitch := -15.0
 @export var min_distance := 4.0
@@ -96,6 +96,11 @@ func _process(delta: float) -> void:
 	_distance = lerpf(_distance, _target_distance, smooth)
 	position = position.lerp(_target_position, smooth)
 	_apply()
+
+
+## Glides the camera to look at a point on the board, keeping angle and zoom.
+func focus_on(point: Vector3) -> void:
+	_target_position = Vector3(point.x, 0, point.z)
 
 
 ## The point on the floor (y = 0) under a screen position, or null.
