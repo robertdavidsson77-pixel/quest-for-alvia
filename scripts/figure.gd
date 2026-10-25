@@ -56,50 +56,100 @@ func face(target: Vector3) -> void:
 		look_at(flat, Vector3.UP)
 
 
-func play_attack(target: Figure) -> void:
+## Winds up and swings at `target`. Returns at the moment the blow lands;
+## call recover() afterwards to step back.
+func lunge(target: Figure) -> void:
 	face(target.position)
-	var lunge := Vector3(0, 0, -0.35)  # forward, since we now face the target
 	var tween := create_tween()
-	tween.tween_property(_body, "position", lunge, 0.1).as_relative()
-	tween.tween_property(_body, "position", -lunge, 0.15).as_relative()
+	# Rear back and raise the weapon...
+	tween.tween_property(_body, "position", Vector3(0, 0, 0.18), 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(_body, "rotation_degrees:x", 14.0, 0.3)
+	tween.tween_interval(0.12)
+	# ...then strike hard and fast.
+	tween.tween_property(_body, "position", Vector3(0, 0, -0.4), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.parallel().tween_property(_body, "rotation_degrees:x", -18.0, 0.08)
 	await tween.finished
 
 
-func take_damage(amount: int) -> void:
+func recover() -> void:
+	var tween := create_tween()
+	tween.tween_property(_body, "position", Vector3.ZERO, 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(_body, "rotation_degrees:x", 0.0, 0.3)
+	await tween.finished
+
+
+## Sways aside as a blow from `attacker` goes wide, kicking up dust.
+func dodge(attacker: Figure) -> void:
+	show_float_text("Miss", Color(0.75, 0.75, 0.75))
+	Effects.dust_puff(get_parent(), position + Vector3(0, 0.1, 0))
+	var side := (position - attacker.position).normalized().cross(Vector3.UP) * 0.25
+	var tween := create_tween()
+	tween.tween_property(_body, "global_position", _body.global_position + side, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(_body, "position", Vector3.ZERO, 0.35).set_trans(Tween.TRANS_SINE)
+	await tween.finished
+
+
+## Takes a blow from `attacker`: flash, blood, knockback and a damage number.
+func take_damage(amount: int, attacker: Figure = null, crit := false) -> void:
 	hp = maxi(0, hp - amount)
 	_update_label()
-	show_float_text("-%d" % amount, Color(1, 0.3, 0.2))
+	var color := Color(1.0, 0.75, 0.2) if crit else Color(1, 0.25, 0.15)
+	show_float_text("-%d" % amount, color, 1.6 if crit else 1.2)
 	Sound.play(stats.voice)
+	var away := Vector3.BACK.rotated(Vector3.UP, rotation.y)
+	if attacker != null:
+		away = (position - attacker.position).normalized()
+	Effects.blood_burst(get_parent(), position + Vector3(0, stats.model_height * 0.6, 0), away, 40 if crit else 24)
+
 	var tween := create_tween()
-	tween.tween_property(_body_material, "emission_energy_multiplier", 2.0, 0.05)
-	tween.tween_property(_body_material, "emission_energy_multiplier", 0.0, 0.25)
+	tween.tween_property(_body_material, "emission_energy_multiplier", 4.0, 0.04)
+	tween.tween_property(_body_material, "emission_energy_multiplier", 0.0, 0.5)
+	var knock := create_tween()
+	knock.tween_property(_body, "global_position", _body.global_position + away * (0.35 if crit else 0.2), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	knock.parallel().tween_property(_body, "rotation_degrees:z", randf_range(-12.0, 12.0), 0.08)
+	knock.tween_property(_body, "position", Vector3.ZERO, 0.4).set_trans(Tween.TRANS_SINE)
+	knock.parallel().tween_property(_body, "rotation_degrees:z", 0.0, 0.4)
+	await knock.finished
 	if hp == 0:
 		await _die()
 
 
-func show_float_text(text: String, color: Color) -> void:
+## A number or word that pops up over the figure, then drifts up and fades.
+func show_float_text(text: String, color: Color, size := 1.0) -> void:
 	var label := Label3D.new()
 	label.text = text
 	label.modulate = color
 	label.font_size = 64
-	label.outline_size = 12
+	label.outline_size = 14
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.position = position + Vector3(0, stats.model_height + 0.9, 0)
+	label.scale = Vector3.ONE * 0.2
 	get_parent().add_child(label)
 	var tween := label.create_tween()
-	tween.tween_property(label, "position:y", label.position.y + 0.8, 0.9)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.9).set_delay(0.3)
+	tween.tween_property(label, "scale", Vector3.ONE * size * 1.4, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "scale", Vector3.ONE * size, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(0.5)
+	tween.tween_property(label, "position:y", label.position.y + 0.8, 1.0)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0).set_delay(0.3)
 	tween.tween_callback(label.queue_free)
 
 
 func _die() -> void:
 	Sound.play(stats.voice, 0.0)
 	_label.visible = false
+	await get_tree().create_timer(0.25).timeout
 	var tween := create_tween()
-	tween.tween_property(_body, "rotation_degrees:x", -90.0, 0.4).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(_body, "position:y", 0.12, 0.4)
+	# Sag to the knees, then topple.
+	tween.tween_property(_body, "scale", Vector3(1.05, 0.85, 1.05), 0.3)
+	tween.tween_property(_body, "rotation_degrees:x", -90.0, 0.6).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(_body, "position:y", 0.12, 0.6)
+	tween.parallel().tween_property(_body_material, "albedo_color", stats.color.darkened(0.6), 1.5)
+	tween.tween_callback(func(): Sound.play("step", 0.0))
 	await tween.finished
+	Effects.blood_pool(get_parent(), position)
+	Effects.dust_puff(get_parent(), position, 12, 0.4)
+	await get_tree().create_timer(0.6).timeout
 	died.emit(self)
 
 

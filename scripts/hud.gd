@@ -26,6 +26,7 @@ var _end_screen: Control
 var _end_title: Label
 var _end_subtitle: Label
 var _banner: Label
+var _flash: ColorRect
 var _banner_sub: Label
 
 
@@ -106,6 +107,11 @@ func _ready() -> void:
 	_place(help, Control.PRESET_TOP_RIGHT, Rect2(-640, 16, 616, 100))
 	root.add_child(help)
 
+	_flash = ColorRect.new()
+	_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_flash.color = Color(0, 0, 0, 0)
+	root.add_child(_flash)
 	_build_banner(root)
 	_build_end_screen(root)
 
@@ -171,6 +177,13 @@ func show_dice(caption: String, sides: int, results: Array) -> void:
 		punch.tween_property(panels[i], "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	# Hold the result so the player can read it.
 	await get_tree().create_timer(0.9).timeout
+
+
+## Washes the screen with `color` for a moment, like a blow to the head.
+func flash(color: Color, strength: float) -> void:
+	_flash.color = Color(color, strength)
+	var tween := create_tween()
+	tween.tween_property(_flash, "color:a", 0.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 
 ## Big words across the middle of the screen, such as "YOUR TURN". They fade

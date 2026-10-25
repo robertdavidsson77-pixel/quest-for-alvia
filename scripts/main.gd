@@ -282,42 +282,64 @@ func _dungeon_turn() -> void:
 # --- Combat ----------------------------------------------------------------
 
 ## d20 + attack bonus against armour class. A natural 20 always hits and
-## doubles the damage dice; a natural 1 always misses.
+## doubles the damage dice; a natural 1 always misses. The dice decide first,
+## then the blow is shown landing (or going wide).
 func _resolve_attack(attacker: Figure, defender: Figure) -> void:
 	var a := attacker.stats
+	camera_rig.close_in((attacker.position + defender.position) / 2.0)
 	var d20 := Dice.roll(20)
 	var total := d20 + a.attack_bonus
 	await hud.show_dice("%s attacks: d20 + %d vs AC %d" % [a.display_name, a.attack_bonus, defender.stats.armor_class], 20, [d20])
-	await _beat()
-	Sound.play(a.voice)
-	await attacker.play_attack(defender)
 
 	var crit := d20 == 20
 	var hit := d20 != 1 and (crit or total >= defender.stats.armor_class)
+	var damage := 0
+	var dice_count := a.damage_dice_count * (2 if crit else 1)
+	if hit:
+		var rolls := Dice.roll_many(dice_count, a.damage_die)
+		await hud.show_dice("Damage: %dd%d + %d" % [dice_count, a.damage_die, a.damage_bonus], a.damage_die, rolls)
+		damage = Dice.total(rolls) + a.damage_bonus
+
+	await _beat()
+	Sound.play(a.voice)
+	await attacker.lunge(defender)
+	attacker.recover()
+
 	var who := "[b]%s[/b]" % a.display_name
 	if not hit:
 		var why := "a natural 1" if d20 == 1 else "%d" % total
 		hud.log_line("%s swings the %s: %s, a miss." % [who, a.weapon_name, why])
 		Sound.play("miss")
-		defender.show_float_text("Miss", Color(0.8, 0.8, 0.8))
+		await defender.dodge(attacker)
+		camera_rig.release()
 		return
 
 	Sound.play("hit")
 	if crit:
 		Sound.play("crit")
-	var dice_count := a.damage_dice_count * (2 if crit else 1)
-	var rolls := Dice.roll_many(dice_count, a.damage_die)
-	await hud.show_dice("Damage: %dd%d + %d" % [dice_count, a.damage_die, a.damage_bonus], a.damage_die, rolls)
-	var damage := Dice.total(rolls) + a.damage_bonus
-	if crit:
 		hud.log_line("%s rolls a [color=#f5c040]NATURAL 20[/color]! The %s bites deep for [b]%d[/b] damage." % [who, a.weapon_name, damage])
-		defender.show_float_text("CRITICAL!", Color(0.95, 0.75, 0.25))
+		attacker.show_float_text("CRITICAL!", Hud.GOLD, 1.3)
+		hud.flash(Hud.GOLD, 0.45)
+		camera_rig.shake(0.35)
+		_slow_motion(0.25, 0.6)
 	else:
 		hud.log_line("%s hits with the %s (%d): [b]%d[/b] damage." % [who, a.weapon_name, total, damage])
-	await defender.take_damage(damage)
+		camera_rig.shake(0.15 + 0.02 * damage)
+	if defender == hero:
+		hud.flash(Hud.BLOOD, 0.35)
+	await defender.take_damage(damage, attacker, crit)
 	if not defender.is_alive():
 		hud.log_line("[color=#c33]%s falls.[/color]" % defender.stats.display_name)
+	camera_rig.release()
 	_refresh_hero_ui()
+
+
+## Slows the whole game to `factor` for `seconds` of real time.
+func _slow_motion(factor: float, seconds: float) -> void:
+	var normal := Engine.time_scale
+	Engine.time_scale = normal * factor
+	await get_tree().create_timer(seconds, true, false, true).timeout
+	Engine.time_scale = normal
 
 
 # --- Helpers ---------------------------------------------------------------
