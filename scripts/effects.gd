@@ -3,22 +3,21 @@
 class_name Effects
 extends RefCounted
 
-const BLOOD := Color(0.45, 0.02, 0.02)
+const BLOOD := Color(0.6, 0.03, 0.03)
 const DUST := Color(0.45, 0.4, 0.35, 0.6)
 
 
 ## A spray of blood droplets from `pos`, thrown mostly along `direction`.
 static func blood_burst(parent: Node, pos: Vector3, direction: Vector3, amount := 28) -> void:
-	var p := _particles(amount, 0.7)
+	var p := _particles(amount, 0.9)
 	p.position = pos
 	p.direction = (direction.normalized() + Vector3.UP * 0.6).normalized()
 	p.spread = 35.0
 	p.initial_velocity_min = 1.5
 	p.initial_velocity_max = 3.5
 	p.gravity = Vector3(0, -9.8, 0)
-	p.scale_amount_min = 0.04
-	p.scale_amount_max = 0.09
-	p.color = BLOOD
+	p.scale_amount_min = 0.06
+	p.scale_amount_max = 0.14
 	p.mesh = _sphere(BLOOD, 0.5)
 	_fire(parent, p)
 
@@ -47,7 +46,7 @@ static func dust_puff(parent: Node, pos: Vector3, amount := 18, radius := 0.3) -
 
 
 ## A dark pool that slowly spreads under a fallen figure, and stays.
-static func blood_pool(parent: Node, pos: Vector3) -> void:
+static func blood_pool(parent: Node, pos: Vector3, size := 1.0) -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.22, 0.01, 0.01)
 	mat.roughness = 0.15
@@ -61,9 +60,10 @@ static func blood_pool(parent: Node, pos: Vector3) -> void:
 	pool.material_override = mat
 	pool.position = Vector3(pos.x, 0.015, pos.z)
 	pool.scale = Vector3(0.05, 1, 0.05)
+	pool.rotation.y = randf() * TAU
 	parent.add_child(pool)
 	var tween := pool.create_tween()
-	tween.tween_property(pool, "scale", Vector3(1.3, 1, 1.0), 2.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(pool, "scale", Vector3(1.3, 1, 1.0) * size, 2.5 * size).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 static func _particles(amount: int, lifetime: float) -> CPUParticles3D:

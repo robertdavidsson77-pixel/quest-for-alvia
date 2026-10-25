@@ -249,6 +249,9 @@ func _build_end_screen(root: Control) -> void:
 	again.custom_minimum_size = Vector2(240, 48)
 	again.pressed.connect(func(): restart_pressed.emit())
 	box.add_child(again)
+	var credits := _make_label("Music: \"Dark Quest\" by Alexandr Zhelanov (CC-BY 4.0)  ·  \"Dark Descent\" by Matthew Pablo (CC-BY 3.0)", 14, Color(BONE, 0.6))
+	credits.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(credits)
 
 
 ## Anchors `control` to a corner or edge of the screen, then offsets it by `rect`.

@@ -1,11 +1,15 @@
 ## Music and sound effects. Loaded as the autoload "Sound", so any script can
 ## call Sound.play("door"). Each sound name has a few takes; one is picked at
-## random so repeated sounds don't feel mechanical. All files are CC0, see
-## audio/CREDITS.md.
+## random so repeated sounds don't feel mechanical.
+## Music has three layers: the cave ambience always plays underneath, and an
+## exploring track crossfades to a combat track while Sound.set_combat(true).
+## Sound effects are CC0; the two music tracks are CC-BY, see audio/CREDITS.md.
 extends Node
 
 const SFX_DIR := "res://audio/sfx/"
-const MUSIC_FILE := "res://audio/music/dungeon-ambience.ogg"
+const AMBIENCE_FILE := "res://audio/music/dungeon-ambience.ogg"
+const EXPLORE_FILE := "res://audio/music/dark-quest.ogg"
+const COMBAT_FILE := "res://audio/music/dark-descent.mp3"
 
 ## Sound name -> [file names, volume in dB].
 const SOUNDS := {
@@ -21,7 +25,10 @@ const SOUNDS := {
 	"goblin": [["goblin-1.wav", "goblin-2.wav", "goblin-3.wav"], -3.0],
 	"goblin_wake": [["goblin-5-beast.wav"], 0.0],
 }
-const MUSIC_DB := -14.0
+const AMBIENCE_DB := -16.0
+const MUSIC_DB := -10.0
+const SILENT_DB := -60.0
+const CROSSFADE_TIME := 2.0
 const VOICES := 8  # how many sounds can play at once
 
 var volume := 0.8:  # 0..1, the slider value
@@ -36,7 +43,10 @@ var muted := false:
 var _streams := {}  # sound name -> Array[AudioStream]
 var _players: Array[AudioStreamPlayer] = []
 var _next_player := 0
-var _music: AudioStreamPlayer
+var _explore: AudioStreamPlayer
+var _combat: AudioStreamPlayer
+var _in_combat := false
+var _fade: Tween
 
 
 func _ready() -> void:
@@ -50,13 +60,10 @@ func _ready() -> void:
 		add_child(p)
 		_players.append(p)
 
-	var music := (load(MUSIC_FILE) as AudioStreamOggVorbis).duplicate() as AudioStreamOggVorbis
-	music.loop = true
-	_music = AudioStreamPlayer.new()
-	_music.stream = music
-	_music.volume_db = MUSIC_DB
-	add_child(_music)
-	_music.play()
+	_make_music(AMBIENCE_FILE, AMBIENCE_DB).play()
+	_explore = _make_music(EXPLORE_FILE, MUSIC_DB)
+	_explore.play()
+	_combat = _make_music(COMBAT_FILE, SILENT_DB)
 	_apply_volume()
 
 
@@ -73,8 +80,35 @@ func play(sound_name: String, pitch_jitter := 0.08) -> void:
 	p.play()
 
 
+## Crossfades to the combat track (true) or back to the exploring track (false).
+## Each track starts from the beginning when it fades in.
+func set_combat(on: bool) -> void:
+	if on == _in_combat:
+		return
+	_in_combat = on
+	var fade_in := _combat if on else _explore
+	var fade_out := _explore if on else _combat
+	if _fade:
+		_fade.kill()
+	fade_in.play()
+	_fade = create_tween().set_parallel()
+	_fade.tween_property(fade_in, "volume_db", MUSIC_DB, CROSSFADE_TIME)
+	_fade.tween_property(fade_out, "volume_db", SILENT_DB, CROSSFADE_TIME)
+	_fade.chain().tween_callback(fade_out.stop)
+
+
 func toggle_mute() -> void:
 	muted = not muted
+
+
+func _make_music(file: String, volume_db: float) -> AudioStreamPlayer:
+	var stream: AudioStream = load(file).duplicate()
+	stream.set("loop", true)  # both AudioStreamOggVorbis and AudioStreamMP3 have it
+	var player := AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = volume_db
+	add_child(player)
+	return player
 
 
 func _apply_volume() -> void:

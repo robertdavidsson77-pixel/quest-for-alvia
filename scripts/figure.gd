@@ -95,6 +95,8 @@ func take_damage(amount: int, attacker: Figure = null, crit := false) -> void:
 	_update_label()
 	var color := Color(1.0, 0.75, 0.2) if crit else Color(1, 0.25, 0.15)
 	show_float_text("-%d" % amount, color, 1.6 if crit else 1.2)
+	# A few droplets that land and stay on the floor.
+	Effects.blood_pool(get_parent(), position + Vector3(randf_range(-0.2, 0.2), 0, randf_range(-0.2, 0.2)), 0.3)
 	Sound.play(stats.voice)
 	var away := Vector3.BACK.rotated(Vector3.UP, rotation.y)
 	if attacker != null:
@@ -132,6 +134,7 @@ func show_float_text(text: String, color: Color, size := 1.0) -> void:
 	tween.tween_interval(0.5)
 	tween.tween_property(label, "position:y", label.position.y + 0.8, 1.0)
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0).set_delay(0.3)
+	tween.parallel().tween_property(label, "outline_modulate:a", 0.0, 1.0).set_delay(0.3)
 	tween.tween_callback(label.queue_free)
 
 

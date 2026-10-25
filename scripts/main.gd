@@ -185,6 +185,7 @@ func _wake(m: Figure) -> void:
 	m.scale = Vector3(final_scale.x, 0.01, final_scale.z)
 	m.visible = true
 	Sound.play(m.stats.voice + "_wake")
+	Sound.set_combat(true)
 	var tween := create_tween()
 	tween.tween_property(m, "scale", final_scale, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tween.finished
@@ -330,6 +331,8 @@ func _resolve_attack(attacker: Figure, defender: Figure) -> void:
 	await defender.take_damage(damage, attacker, crit)
 	if not defender.is_alive():
 		hud.log_line("[color=#c33]%s falls.[/color]" % defender.stats.display_name)
+		if _awake_monsters().is_empty():
+			Sound.set_combat(false)
 	camera_rig.release()
 	_refresh_hero_ui()
 
@@ -357,6 +360,7 @@ func _spawn(stats: UnitStats, cell: Vector2i) -> Figure:
 
 func _finish(won: bool) -> void:
 	phase = Phase.OVER
+	Sound.set_combat(false)
 	board.clear_highlights()
 	if won:
 		hud.show_end("VICTORY", QuestCellar.VICTORY, true)
