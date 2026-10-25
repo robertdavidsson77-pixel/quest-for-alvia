@@ -47,6 +47,11 @@ func reset_view() -> void:
 	_target_position = Vector3.ZERO
 
 
+## Glides the camera over `point`, keeping the current angle and zoom.
+func focus_on(point: Vector3) -> void:
+	_target_position = Vector3(point.x, 0, point.z)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
