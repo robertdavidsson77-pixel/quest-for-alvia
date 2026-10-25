@@ -9,6 +9,9 @@ const MONSTERS := {"g": GOBLIN}  # map character -> monster
 
 enum Phase { HERO, BUSY, OVER }
 
+const BEAT := 0.45  # a short pause between actions, so each one can land
+const MONSTER_THINK := 0.8  # how long a monster eyes the hero before acting
+
 var board: Board
 var hud: Hud
 var camera_rig: CameraRig
@@ -66,7 +69,7 @@ func _ready() -> void:
 	hud.log_line("[b]%s[/b]" % QuestCellar.TITLE)
 	hud.log_line("[color=#a99]%s[/color]" % QuestCellar.INTRO)
 	await board.reveal_room(board.room_at(board.hero_start), board.hero_start)
-	_start_hero_turn()
+	await _start_hero_turn()
 
 
 func _process(delta: float) -> void:
@@ -97,11 +100,16 @@ func _unhandled_input(event: InputEvent) -> void:
 # --- Hero turn -------------------------------------------------------------
 
 func _start_hero_turn() -> void:
-	phase = Phase.HERO
+	phase = Phase.BUSY
 	has_rolled = false
 	moves_left = 0
 	has_acted = false
 	hud.set_turn("Round %d  ·  %s's turn" % [round_number, hero.stats.display_name])
+	_refresh_hero_ui()
+	hud.set_buttons(false, false)
+	camera_rig.focus_on(hero.position)
+	await hud.show_banner("YOUR TURN", "Round %d" % round_number, Hud.BONE)
+	phase = Phase.HERO
 	_refresh_hero_ui()
 
 
@@ -149,6 +157,7 @@ func _hero_move(cell: Vector2i) -> void:
 	var path := Board.path_from_flood(board.flood(hero.cell, moves_left, _occupied_except(hero)), cell)
 	await hero.move_along(path)
 	moves_left -= path.size()
+	await _beat()
 	phase = Phase.HERO
 	_refresh_hero_ui()
 	_end_turn_if_done()
@@ -157,30 +166,37 @@ func _hero_move(cell: Vector2i) -> void:
 func _open_door(cell: Vector2i) -> void:
 	phase = Phase.BUSY
 	board.clear_highlights()
-	hud.log_line("The door groans open...")
-	camera_rig.focus_on(board.cell_to_world(cell))
+	hud.log_line("You put your shoulder to the door...")
+	camera_rig.close_in(board.cell_to_world(cell))
 	Sound.play("door_creak")
+	await board.shudder_door(cell)
+	await _beat()
+	hud.log_line("It groans open. Cold air, and the smell of rot.")
 	Sound.play("door")
+	camera_rig.shake(0.08)
 	await board.open_door(cell)
+	camera_rig.release()
+	await _beat()
 	for m in monsters:
 		if not m.visible and board.is_room_revealed(board.room_at(m.cell)):
 			await _wake(m)
+	camera_rig.focus_on(hero.position)
 	phase = Phase.HERO
 	_refresh_hero_ui()
 
 
-## A monster steps out of the dark: it pops up and turns to face the hero.
+## A monster rises out of the shadows: first only its red eyes in the dark,
+## then the rest of it, turning to face the hero.
 func _wake(m: Figure) -> void:
+	camera_rig.close_in(m.position)
 	m.face(hero.position)
-	var final_scale := m.scale
-	m.scale = Vector3(final_scale.x, 0.01, final_scale.z)
 	m.visible = true
-	Sound.play(m.stats.voice + "_wake")
-	Sound.set_combat(true)
-	var tween := create_tween()
-	tween.tween_property(m, "scale", final_scale, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	await tween.finished
-	m.show_float_text("!", Color(0.95, 0.3, 0.2))
+	await m.emerge(func(): Sound.set_combat(true))
+	camera_rig.shake(0.12)
+	Effects.dust_puff(self, m.position, 14, 0.4)
+	m.show_float_text("!", Color(0.95, 0.3, 0.2), 1.3)
+	await get_tree().create_timer(0.6).timeout
+	camera_rig.release()
 	hud.log_line("[color=#c66]A %s! It has seen you.[/color]" % m.stats.display_name.to_lower())
 
 
@@ -189,6 +205,7 @@ func _hero_attack(target: Figure) -> void:
 	board.clear_highlights()
 	await _resolve_attack(hero, target)
 	has_acted = true
+	await _beat()
 	if _living_monsters().is_empty():
 		_finish(true)
 		return
@@ -243,67 +260,103 @@ func _refresh_hero_ui() -> void:
 
 func _dungeon_turn() -> void:
 	hud.set_turn("Round %d  ·  The dungeon stirs" % round_number)
-	for m in _awake_monsters():
-		await get_tree().create_timer(0.35).timeout
+	await _beat()
+	var awake := _awake_monsters()
+	if not awake.is_empty():
+		await hud.show_banner("THE DUNGEON STIRS", "", Hud.BLOOD)
+	for m in awake:
+		# The monster turns, eyes its prey, and only then acts.
+		camera_rig.focus_on(m.position)
+		m.face(hero.position)
+		await get_tree().create_timer(MONSTER_THINK).timeout
 		if not Board.are_adjacent(m.cell, hero.cell):
 			var path := board.path_to_adjacent(m.cell, hero.cell, _occupied_except(m))
 			if path.size() > m.stats.speed:
 				path = path.slice(0, m.stats.speed)
 			await m.move_along(path)
+			await _beat()
 		if Board.are_adjacent(m.cell, hero.cell):
 			await _resolve_attack(m, hero)
 			if not hero.is_alive():
 				_finish(false)
 				return
+			await _beat()
 		else:
 			m.face(hero.position)
 	round_number += 1
-	_start_hero_turn()
+	await _start_hero_turn()
 
 
 # --- Combat ----------------------------------------------------------------
 
 ## d20 + attack bonus against armour class. A natural 20 always hits and
-## doubles the damage dice; a natural 1 always misses.
+## doubles the damage dice; a natural 1 always misses. The dice decide first,
+## then the blow is shown landing (or going wide).
 func _resolve_attack(attacker: Figure, defender: Figure) -> void:
 	var a := attacker.stats
+	camera_rig.close_in((attacker.position + defender.position) / 2.0)
 	var d20 := Dice.roll(20)
 	var total := d20 + a.attack_bonus
 	await hud.show_dice("%s attacks: d20 + %d vs AC %d" % [a.display_name, a.attack_bonus, defender.stats.armor_class], 20, [d20])
-	Sound.play(a.voice)
-	await attacker.play_attack(defender)
 
 	var crit := d20 == 20
 	var hit := d20 != 1 and (crit or total >= defender.stats.armor_class)
+	var damage := 0
+	var dice_count := a.damage_dice_count * (2 if crit else 1)
+	if hit:
+		var rolls := Dice.roll_many(dice_count, a.damage_die)
+		await hud.show_dice("Damage: %dd%d + %d" % [dice_count, a.damage_die, a.damage_bonus], a.damage_die, rolls)
+		damage = Dice.total(rolls) + a.damage_bonus
+
+	await _beat()
+	Sound.play(a.voice)
+	await attacker.lunge(defender)
+	attacker.recover()
+
 	var who := "[b]%s[/b]" % a.display_name
 	if not hit:
 		var why := "a natural 1" if d20 == 1 else "%d" % total
 		hud.log_line("%s swings the %s: %s, a miss." % [who, a.weapon_name, why])
 		Sound.play("miss")
-		defender.show_float_text("Miss", Color(0.8, 0.8, 0.8))
+		await defender.dodge(attacker)
+		camera_rig.release()
 		return
 
 	Sound.play("hit")
 	if crit:
 		Sound.play("crit")
-	var dice_count := a.damage_dice_count * (2 if crit else 1)
-	var rolls := Dice.roll_many(dice_count, a.damage_die)
-	await hud.show_dice("Damage: %dd%d + %d" % [dice_count, a.damage_die, a.damage_bonus], a.damage_die, rolls)
-	var damage := Dice.total(rolls) + a.damage_bonus
-	if crit:
 		hud.log_line("%s rolls a [color=#f5c040]NATURAL 20[/color]! The %s bites deep for [b]%d[/b] damage." % [who, a.weapon_name, damage])
-		defender.show_float_text("CRITICAL!", Color(0.95, 0.75, 0.25))
+		attacker.show_float_text("CRITICAL!", Hud.GOLD, 1.3)
+		hud.flash(Hud.GOLD, 0.45)
+		camera_rig.shake(0.35)
+		_slow_motion(0.25, 0.6)
 	else:
 		hud.log_line("%s hits with the %s (%d): [b]%d[/b] damage." % [who, a.weapon_name, total, damage])
-	await defender.take_damage(damage)
+		camera_rig.shake(0.15 + 0.02 * damage)
+	if defender == hero:
+		hud.flash(Hud.BLOOD, 0.35)
+	await defender.take_damage(damage, attacker, crit)
 	if not defender.is_alive():
 		hud.log_line("[color=#c33]%s falls.[/color]" % defender.stats.display_name)
 		if _awake_monsters().is_empty():
 			Sound.set_combat(false)
+	camera_rig.release()
 	_refresh_hero_ui()
 
 
+## Slows the whole game to `factor` for `seconds` of real time.
+func _slow_motion(factor: float, seconds: float) -> void:
+	var normal := Engine.time_scale
+	Engine.time_scale = normal * factor
+	await get_tree().create_timer(seconds, true, false, true).timeout
+	Engine.time_scale = normal
+
+
 # --- Helpers ---------------------------------------------------------------
+
+func _beat() -> void:
+	await get_tree().create_timer(BEAT).timeout
+
 
 func _spawn(stats: UnitStats, cell: Vector2i) -> Figure:
 	var f := Figure.new()

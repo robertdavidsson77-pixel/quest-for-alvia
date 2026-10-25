@@ -11,7 +11,8 @@ const DIRECTIONS: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP,
 const WALL_HEIGHT := 1.4
 const ROOM_CHARS := ".HgTCBS"  # squares that belong to a room
 const WALKABLE_CHARS := ".Hg"   # room squares you can stand on (the rest is furniture)
-const REVEAL_STAGGER := 0.035   # seconds of delay per square of distance from the door
+const REVEAL_STAGGER := 0.07    # seconds of delay per square of distance from the door
+const TORCH_GAP := 0.45         # torches in a new room catch light one after another
 
 var width := 0
 var height := 0
@@ -119,13 +120,29 @@ func closed_doors_next_to(cell: Vector2i) -> Array:
 	return found
 
 
-## Swings the door open (it sinks into the floor) and reveals the rooms behind it.
+## The door shudders against its hinges, as if something resists. Await it
+## before open_door() for the full effect.
+func shudder_door(cell: Vector2i) -> void:
+	var panel: Node3D = _doors[cell]["panel"]
+	var home := panel.position
+	var tween := create_tween()
+	for i in 3:
+		var jolt := Vector3(randf_range(-0.04, 0.04), 0, randf_range(-0.04, 0.04))
+		tween.tween_property(panel, "position", home + jolt, 0.05)
+		tween.tween_property(panel, "position", home, 0.08)
+		tween.tween_interval(0.18 - i * 0.04)
+	await tween.finished
+
+
+## Grinds the door open (it sinks slowly into the floor) and reveals the rooms
+## behind it, with a burst of old dust.
 func open_door(cell: Vector2i) -> void:
 	var door: Dictionary = _doors[cell]
 	door["open"] = true
 	var panel: Node3D = door["panel"]
+	Effects.dust_puff(self, cell_to_world(cell) + Vector3(0, 0.3, 0), 40, 0.5)
 	var tween := create_tween()
-	tween.tween_property(panel, "position:y", -WALL_HEIGHT, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(panel, "position:y", -WALL_HEIGHT, 1.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
 	panel.visible = false
 	for room in door["rooms"]:
@@ -138,13 +155,38 @@ func open_door(cell: Vector2i) -> void:
 func reveal_room(room: int, from_cell: Vector2i) -> void:
 	_revealed[room] = true
 	var longest := 0.0
+	var torches: Array[OmniLight3D] = []
 	for node in _room_nodes.get(room, []):
 		if node.visible:
 			continue  # already shown with a neighbouring room
+		if node is OmniLight3D:
+			torches.append(node)
+			continue
+		if node.has_meta("flame"):
+			continue  # lit together with its torch light
 		var delay := Vector2(world_to_cell(node.position)).distance_to(Vector2(from_cell)) * REVEAL_STAGGER
 		longest = maxf(longest, delay)
 		_pop_in(node, delay)
 	await get_tree().create_timer(longest + 0.35).timeout
+	# Nearest torch first, then the rest one by one into the dark.
+	torches.sort_custom(func(a: OmniLight3D, b: OmniLight3D) -> bool:
+		return a.position.distance_to(cell_to_world(from_cell)) < b.position.distance_to(cell_to_world(from_cell)))
+	for light in torches:
+		_ignite(light)
+		await get_tree().create_timer(TORCH_GAP).timeout
+
+
+## A torch flares up and settles into its flicker.
+func _ignite(light: OmniLight3D) -> void:
+	var flame: Node3D = light.get_meta("flame_node")
+	flame.scale = Vector3.ONE * 0.01
+	flame.visible = true
+	light.set_meta("fade", 0.0)
+	light.visible = true
+	var tween := create_tween()
+	tween.tween_property(flame, "scale", Vector3.ONE * 1.6, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(flame, "scale", Vector3.ONE, 0.4)
+	tween.parallel().tween_method(func(v: float): light.set_meta("fade", v), 0.0, 1.0, 0.6)
 
 
 func _door_seen(cell: Vector2i) -> bool:
@@ -383,6 +425,7 @@ func _add_torch(cell: Vector2i) -> void:
 	flame.mesh = flame_mesh
 	flame.material_override = flame_mat
 	flame.position = pos
+	flame.set_meta("flame", true)
 	add_child(flame)
 	_register(flame, rooms)
 
@@ -392,6 +435,7 @@ func _add_torch(cell: Vector2i) -> void:
 	light.omni_range = 6.0
 	light.shadow_enabled = true
 	light.position = pos + dir * 0.2
+	light.set_meta("flame_node", flame)
 	add_child(light)
 	_register(light, rooms)
 	torch_lights.append(light)

@@ -27,6 +27,9 @@ var _target_distance := 0.0
 var _target_position := Vector3.ZERO
 var _dragging := false
 var _saved_pitch := 0.0  # pitch to return to when leaving top-down view
+var _rate := 12.0  # how fast the camera catches up; slower for cinematic moves
+var _shake := 0.0  # current shake strength, fades out by itself
+var _zoom_before_close_in := -1.0
 
 
 func _ready() -> void:
@@ -50,9 +53,34 @@ func reset_view() -> void:
 ## Glides the camera over `point`, keeping the current angle and zoom.
 func focus_on(point: Vector3) -> void:
 	_target_position = Vector3(point.x, 0, point.z)
+	_rate = 4.0
+
+
+## Moves in close over `point` for a dramatic moment, such as a fight.
+## Call release() afterwards to pull back to the old zoom.
+func close_in(point: Vector3) -> void:
+	if _zoom_before_close_in < 0.0:
+		_zoom_before_close_in = _target_distance
+	_target_distance = maxf(min_distance, _zoom_before_close_in * 0.65)
+	focus_on(point)
+
+
+func release() -> void:
+	if _zoom_before_close_in >= 0.0:
+		_target_distance = _zoom_before_close_in
+		_zoom_before_close_in = -1.0
+	_rate = 4.0
+
+
+## Rattles the view, for heavy blows. Strength is roughly in world units.
+func shake(strength: float) -> void:
+	_shake = maxf(_shake, strength)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton or event is InputEventKey:
+		_rate = 12.0  # the player takes over: respond quickly again
+		_zoom_before_close_in = -1.0
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
 			_dragging = event.pressed
@@ -95,11 +123,14 @@ func _process(delta: float) -> void:
 		var move := Vector3(input.x, 0, input.y).normalized().rotated(Vector3.UP, deg_to_rad(_yaw))
 		_target_position += move * pan_speed * (_distance / start_distance) * delta
 
-	var smooth := 1.0 - exp(-12.0 * delta)
+	if input != Vector2.ZERO:
+		_rate = 12.0
+	var smooth := 1.0 - exp(-_rate * delta)
 	_yaw = lerpf(_yaw, _target_yaw, smooth)
 	_pitch = lerpf(_pitch, _target_pitch, smooth)
 	_distance = lerpf(_distance, _target_distance, smooth)
 	position = position.lerp(_target_position, smooth)
+	_shake = move_toward(_shake, 0.0, delta * 1.5)
 	_apply()
 
 
@@ -123,3 +154,5 @@ func _apply() -> void:
 	var pitch := deg_to_rad(_pitch)
 	camera.position = Vector3(0, -sin(pitch) * _distance, cos(pitch) * _distance)
 	camera.rotation = Vector3(pitch, 0, 0)
+	camera.h_offset = randf_range(-_shake, _shake)
+	camera.v_offset = randf_range(-_shake, _shake)
