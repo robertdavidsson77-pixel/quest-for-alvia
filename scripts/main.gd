@@ -9,6 +9,9 @@ const MONSTERS := {"g": GOBLIN}  # map character -> monster
 
 enum Phase { HERO, BUSY, OVER }
 
+const BEAT := 0.45  # a short pause between actions, so each one can land
+const MONSTER_THINK := 0.8  # how long a monster eyes the hero before acting
+
 var board: Board
 var hud: Hud
 var camera_rig: CameraRig
@@ -66,7 +69,7 @@ func _ready() -> void:
 	hud.log_line("[b]%s[/b]" % QuestCellar.TITLE)
 	hud.log_line("[color=#a99]%s[/color]" % QuestCellar.INTRO)
 	await board.reveal_room(board.room_at(board.hero_start), board.hero_start)
-	_start_hero_turn()
+	await _start_hero_turn()
 
 
 func _process(delta: float) -> void:
@@ -97,11 +100,16 @@ func _unhandled_input(event: InputEvent) -> void:
 # --- Hero turn -------------------------------------------------------------
 
 func _start_hero_turn() -> void:
-	phase = Phase.HERO
+	phase = Phase.BUSY
 	has_rolled = false
 	moves_left = 0
 	has_acted = false
 	hud.set_turn("Round %d  ·  %s's turn" % [round_number, hero.stats.display_name])
+	_refresh_hero_ui()
+	hud.set_buttons(false, false)
+	camera_rig.focus_on(hero.position)
+	await hud.show_banner("YOUR TURN", "Round %d" % round_number, Hud.BONE)
+	phase = Phase.HERO
 	_refresh_hero_ui()
 
 
@@ -149,6 +157,7 @@ func _hero_move(cell: Vector2i) -> void:
 	var path := Board.path_from_flood(board.flood(hero.cell, moves_left, _occupied_except(hero)), cell)
 	await hero.move_along(path)
 	moves_left -= path.size()
+	await _beat()
 	phase = Phase.HERO
 	_refresh_hero_ui()
 	_end_turn_if_done()
@@ -188,6 +197,7 @@ func _hero_attack(target: Figure) -> void:
 	board.clear_highlights()
 	await _resolve_attack(hero, target)
 	has_acted = true
+	await _beat()
 	if _living_monsters().is_empty():
 		_finish(true)
 		return
@@ -242,22 +252,31 @@ func _refresh_hero_ui() -> void:
 
 func _dungeon_turn() -> void:
 	hud.set_turn("Round %d  ·  The dungeon stirs" % round_number)
-	for m in _awake_monsters():
-		await get_tree().create_timer(0.35).timeout
+	await _beat()
+	var awake := _awake_monsters()
+	if not awake.is_empty():
+		await hud.show_banner("THE DUNGEON STIRS", "", Hud.BLOOD)
+	for m in awake:
+		# The monster turns, eyes its prey, and only then acts.
+		camera_rig.focus_on(m.position)
+		m.face(hero.position)
+		await get_tree().create_timer(MONSTER_THINK).timeout
 		if not Board.are_adjacent(m.cell, hero.cell):
 			var path := board.path_to_adjacent(m.cell, hero.cell, _occupied_except(m))
 			if path.size() > m.stats.speed:
 				path = path.slice(0, m.stats.speed)
 			await m.move_along(path)
+			await _beat()
 		if Board.are_adjacent(m.cell, hero.cell):
 			await _resolve_attack(m, hero)
 			if not hero.is_alive():
 				_finish(false)
 				return
+			await _beat()
 		else:
 			m.face(hero.position)
 	round_number += 1
-	_start_hero_turn()
+	await _start_hero_turn()
 
 
 # --- Combat ----------------------------------------------------------------
@@ -269,6 +288,7 @@ func _resolve_attack(attacker: Figure, defender: Figure) -> void:
 	var d20 := Dice.roll(20)
 	var total := d20 + a.attack_bonus
 	await hud.show_dice("%s attacks: d20 + %d vs AC %d" % [a.display_name, a.attack_bonus, defender.stats.armor_class], 20, [d20])
+	await _beat()
 	Sound.play(a.voice)
 	await attacker.play_attack(defender)
 
@@ -301,6 +321,10 @@ func _resolve_attack(attacker: Figure, defender: Figure) -> void:
 
 
 # --- Helpers ---------------------------------------------------------------
+
+func _beat() -> void:
+	await get_tree().create_timer(BEAT).timeout
+
 
 func _spawn(stats: UnitStats, cell: Vector2i) -> Figure:
 	var f := Figure.new()

@@ -25,6 +25,8 @@ var _volume_slider: HSlider
 var _end_screen: Control
 var _end_title: Label
 var _end_subtitle: Label
+var _banner: Label
+var _banner_sub: Label
 
 
 func _ready() -> void:
@@ -104,6 +106,7 @@ func _ready() -> void:
 	_place(help, Control.PRESET_TOP_RIGHT, Rect2(-640, 16, 616, 100))
 	root.add_child(help)
 
+	_build_banner(root)
 	_build_end_screen(root)
 
 
@@ -145,19 +148,45 @@ func show_dice(caption: String, sides: int, results: Array) -> void:
 		faces.append(panel.get_child(0).get_child(0) as Label)
 
 	Sound.play("dice_shake")
-	for i in 9:
+	# Tumble fast at first, then slow down as the dice run out of steam.
+	for i in 16:
 		for face in faces:
 			face.text = str(randi_range(1, sides))
-		await get_tree().create_timer(0.05).timeout
+		for panel in panels:
+			panel.pivot_offset = panel.size / 2.0
+			panel.rotation = randf_range(-0.35, 0.35) * (1.0 - i / 16.0)
+		await get_tree().create_timer(0.035 + 0.006 * i * i / 4.0).timeout
 
 	Sound.play("die_land" if results.size() == 1 else "dice_land")
 	for i in results.size():
 		faces[i].text = str(results[i])
+		panels[i].rotation = 0.0
 		if sides == 20 and results[i] == 20:
 			_tint_die(panels[i], GOLD)
 		elif sides == 20 and results[i] == 1:
 			_tint_die(panels[i], BLOOD)
-	await get_tree().create_timer(0.4).timeout
+		# Thud: the die punches up in size and settles.
+		var punch := panels[i].create_tween()
+		punch.tween_property(panels[i], "scale", Vector2(1.25, 1.25), 0.06)
+		punch.tween_property(panels[i], "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Hold the result so the player can read it.
+	await get_tree().create_timer(0.9).timeout
+
+
+## Big words across the middle of the screen, such as "YOUR TURN". They fade
+## in, hold, and fade out; awaiting this waits for the whole thing.
+func show_banner(text: String, subtitle: String, color: Color) -> void:
+	_banner.text = text
+	_banner.add_theme_color_override("font_color", color)
+	_banner_sub.text = subtitle
+	var tween := create_tween()
+	tween.tween_property(_banner, "modulate:a", 1.0, 0.35)
+	tween.parallel().tween_property(_banner_sub, "modulate:a", 1.0, 0.35)
+	tween.parallel().tween_property(_banner, "scale", Vector2.ONE, 0.5).from(Vector2(1.15, 1.15)).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(0.7)
+	tween.tween_property(_banner, "modulate:a", 0.0, 0.45)
+	tween.parallel().tween_property(_banner_sub, "modulate:a", 0.0, 0.45)
+	await tween.finished
 
 
 func show_end(title: String, subtitle: String, won: bool) -> void:
@@ -166,6 +195,23 @@ func show_end(title: String, subtitle: String, won: bool) -> void:
 	_end_subtitle.text = subtitle
 	_end_screen.visible = true
 	set_buttons(false, false)
+
+
+func _build_banner(root: Control) -> void:
+	_banner = _make_label("", 72, BONE)
+	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_banner.add_theme_constant_override("outline_size", 16)
+	_place(_banner, Control.PRESET_CENTER, Rect2(-500, -320, 1000, 100))
+	_banner.pivot_offset = Vector2(500, 50)
+	_banner.modulate.a = 0.0
+	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_banner)
+	_banner_sub = _make_label("", 24, Color(BONE, 0.8))
+	_banner_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_place(_banner_sub, Control.PRESET_CENTER, Rect2(-500, -225, 1000, 40))
+	_banner_sub.modulate.a = 0.0
+	_banner_sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_banner_sub)
 
 
 func _build_end_screen(root: Control) -> void:

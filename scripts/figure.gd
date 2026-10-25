@@ -5,7 +5,8 @@ extends Node3D
 
 signal died(figure: Figure)
 
-const STEP_TIME := 0.18
+const STEP_TIME := 0.36
+const STEP_PAUSE := 0.08  # a beat between squares, like lifting a miniature again
 
 var stats: UnitStats
 var hp := 0
@@ -35,14 +36,18 @@ func move_along(path: Array[Vector2i]) -> void:
 	for step in path:
 		var target := board.cell_to_world(step)
 		face(target)
-		Sound.play("step")
 		var tween := create_tween()
-		tween.tween_property(self, "position", target, STEP_TIME)
-		# A little hop, like moving a miniature by hand.
-		tween.parallel().tween_property(_body, "position:y", 0.15, STEP_TIME / 2.0)
-		tween.chain().tween_property(_body, "position:y", 0.0, STEP_TIME / 2.0)
+		tween.tween_property(self, "position", target, STEP_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		# A heavy hop, like moving a miniature by hand, then a thud on landing.
+		tween.parallel().tween_property(_body, "position:y", 0.22, STEP_TIME / 2.0).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.chain().tween_property(_body, "position:y", 0.0, STEP_TIME / 2.0).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tween.tween_callback(func(): Sound.play("step"))
+		# Squash a little as it lands.
+		tween.tween_property(_body, "scale", Vector3(1.08, 0.9, 1.08), 0.05)
+		tween.tween_property(_body, "scale", Vector3.ONE, 0.1)
 		await tween.finished
 		cell = step
+		await get_tree().create_timer(STEP_PAUSE).timeout
 
 
 func face(target: Vector3) -> void:
