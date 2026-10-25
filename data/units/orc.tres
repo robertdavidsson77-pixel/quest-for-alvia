@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="UnitStats" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="1_stats"]
+
+[resource]
+script = ExtResource("1_stats")
+display_name = "Orc"
+is_hero = false
+max_hp = 15
+armor_class = 13
+attack_bonus = 5
+weapon_name = "greataxe"
+damage_dice_count = 1
+damage_die = 12
+damage_bonus = 3
+speed = 6
+color = Color(0.3, 0.35, 0.2, 1)
+model_height = 1.05
+voice = "goblin"
+model_path = "res://models/creatures/orc.glb"
+eye_height = 0.85

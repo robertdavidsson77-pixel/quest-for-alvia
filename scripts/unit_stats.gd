@@ -15,7 +15,15 @@ extends Resource
 ## Squares moved per turn. 0 means the unit rolls 2d6 instead (heroes).
 @export var speed: int = 0
 @export var color: Color = Color.WHITE
+## Height of the figure in squares.
 @export var model_height: float = 1.0
+## The 3D model, a .glb with Idle, Walk, Attack1 and Die animations.
+## Empty means simple placeholder shapes.
+@export_file("*.glb") var model_path: String = ""
+## Seconds into the attack animation when the blow lands.
+@export var hit_time: float = 0.45
+## Where the red eyes glow in the dark, as a share of the figure's height.
+@export var eye_height: float = 0.88
 ## Sound name for this unit's grunts (see scripts/sound.gd). Empty means silent.
 ## "<voice>_wake" plays when it first sees the hero.
 @export var voice: String = ""

@@ -13,6 +13,7 @@ const ROOM_CHARS := ".HgTCBS"  # squares that belong to a room
 const WALKABLE_CHARS := ".Hg"   # room squares you can stand on (the rest is furniture)
 const REVEAL_STAGGER := 0.07    # seconds of delay per square of distance from the door
 const TORCH_GAP := 0.45         # torches in a new room catch light one after another
+const DUNGEON := "res://models/dungeon/%s.glb"
 
 var width := 0
 var height := 0
@@ -350,13 +351,31 @@ func _make_highlight(material: StandardMaterial3D) -> MeshInstance3D:
 # --- Building pieces -------------------------------------------------------
 
 func _add_floor(cell: Vector2i) -> void:
-	var shade := randf_range(0.17, 0.24)
-	var tile := _box(Vector3(0.96, 0.1, 0.96), Color(shade, shade * 0.95, shade * 0.9))
-	tile.position = cell_to_world(cell) + Vector3(0, -0.05, 0)
+	var tile := _model("floor", 1.0, true)
+	tile.position = cell_to_world(cell)
+	# Turn each tile a random quarter, so the pattern doesn't repeat.
+	tile.rotation_degrees.y = 90 * randi_range(0, 3)
 	_register(tile, [room_at(cell)])
 
 
-## Placeholder furniture: simple boxes until we have real models.
+## A dungeon model from res://models/dungeon, `width` squares wide, in its own
+## node so it can pop in and sink away around its base.
+func _model(name: String, width: float, top := false) -> Node3D:
+	var holder := Node3D.new()
+	holder.add_child(Models.fitted(DUNGEON % name, width, top))
+	add_child(holder)
+	return holder
+
+
+## Turns furniture at `cell` to face away from the wall behind it.
+func _face_room(node: Node3D, cell: Vector2i) -> void:
+	for d in DIRECTIONS:
+		if _is_wall(cell + d):
+			node.basis = Basis.looking_at(Vector3(-d.x, 0, -d.y))
+			return
+
+
+## Furniture: a real model for bookcases, boxes for the rest (for now).
 func _add_furniture(cell: Vector2i, c: String) -> void:
 	var base := cell_to_world(cell)
 	var room := [room_at(cell)]
@@ -373,8 +392,9 @@ func _add_furniture(cell: Vector2i, c: String) -> void:
 			band.position = base + Vector3(0, 0.3, 0)
 			_register(band, room)
 		"B":  # bookcase
-			var shelf := _box(Vector3(0.9, 1.4, 0.4), Color(0.22, 0.13, 0.08))
-			shelf.position = base + Vector3(0, 0.7, 0)
+			var shelf := _model("bookshelf", 0.95)
+			shelf.position = base
+			_face_room(shelf, cell)
 			_register(shelf, room)
 		"S":  # stairs, climbing towards the nearest wall
 			var up := Vector2i.DOWN
@@ -396,9 +416,13 @@ func _add_wall(cell: Vector2i, torch: bool) -> void:
 	var rooms := _rooms_around(cell, true)
 	if rooms.is_empty():
 		return  # buried in rock, never seen
-	var wall := _box(Vector3(1.0, WALL_HEIGHT, 1.0), Color(0.13, 0.12, 0.12))
-	wall.position = cell_to_world(cell) + Vector3(0, WALL_HEIGHT / 2.0 - 0.1, 0)
+	var wall := _model("wall", 1.0)
+	wall.position = cell_to_world(cell)
 	_register(wall, rooms)
+	# The wall model is open on top; a dark stone cap closes it.
+	var cap := _box(Vector3(1.0, 0.04, 1.0), Color(0.07, 0.06, 0.06))
+	cap.position = Vector3(0, WALL_HEIGHT + 0.01, 0)
+	cap.reparent(wall, false)
 	if torch:
 		_add_torch(cell)
 
@@ -412,6 +436,11 @@ func _add_torch(cell: Vector2i) -> void:
 	var dir := Vector3(inward.x, 0, inward.y)
 	var pos := cell_to_world(cell) + dir * 0.55 + Vector3(0, 1.1, 0)
 	var rooms := [room_at(cell + inward)]
+
+	var lamp := _model("lamp", 0.25)
+	lamp.position = cell_to_world(cell) + dir * 0.55 + Vector3(0, 0.75, 0)
+	lamp.basis = Basis.looking_at(dir)
+	_register(lamp, rooms)
 
 	var flame_mat := StandardMaterial3D.new()
 	flame_mat.albedo_color = Color(1, 0.6, 0.2)
@@ -446,14 +475,15 @@ func _add_door(cell: Vector2i, locked: bool) -> void:
 	_add_floor_under_door(cell, rooms)
 	# The door runs along the wall line: walls to its left and right, or above and below.
 	var along_x := _is_wall(cell + Vector2i.LEFT) or _is_wall(cell + Vector2i.RIGHT)
-	var size := Vector3(0.9, WALL_HEIGHT - 0.1, 0.12) if along_x else Vector3(0.12, WALL_HEIGHT - 0.1, 0.9)
-	var color := Color(0.25, 0.15, 0.08) if not locked else Color(0.18, 0.1, 0.06)
-	var panel := _box(size, color)
-	panel.position = cell_to_world(cell) + Vector3(0, (WALL_HEIGHT - 0.1) / 2.0, 0)
+	var panel := _model("door", 0.9)
+	panel.position = cell_to_world(cell)
+	if not along_x:
+		panel.rotation_degrees.y = 90
 	_register(panel, rooms)
 	if locked:
-		var bar := _box(Vector3(size.x + 0.04, 0.12, size.z + 0.04), Color(0.4, 0.4, 0.42))
-		bar.position = Vector3(0, 0.1, 0)
+		# An iron bar across the door.
+		var bar := _box(Vector3(1.0, 0.1, 0.3), Color(0.4, 0.4, 0.42))
+		bar.position = Vector3(0, 0.6, 0)
 		bar.reparent(panel, false)
 	# Frame posts so the doorway reads as part of the wall.
 	for side in [-1, 1]:
@@ -465,8 +495,8 @@ func _add_door(cell: Vector2i, locked: bool) -> void:
 
 
 func _add_floor_under_door(cell: Vector2i, rooms: Array) -> void:
-	var tile := _box(Vector3(0.96, 0.1, 0.96), Color(0.16, 0.15, 0.14))
-	tile.position = cell_to_world(cell) + Vector3(0, -0.05, 0)
+	var tile := _model("floor", 1.0, true)
+	tile.position = cell_to_world(cell)
 	_register(tile, rooms)
 
 

@@ -1,5 +1,6 @@
 ## A hero or monster standing on the board, like a painted miniature.
-## The look is built from simple shapes until we have real models.
+## Uses the unit's 3D model and its animations when it has one, otherwise
+## simple placeholder shapes.
 class_name Figure
 extends Node3D
 
@@ -15,7 +16,9 @@ var board: Board
 
 var _body: Node3D
 var _label: Label3D
-var _body_material: StandardMaterial3D
+## Laid over every part of the figure: flashes red when hit, black in the dark.
+var _shade: StandardMaterial3D
+var _anim: AnimationPlayer
 var _eyes: Array[MeshInstance3D] = []
 var _eye_material: StandardMaterial3D
 
@@ -35,6 +38,9 @@ func is_alive() -> bool:
 
 
 func move_along(path: Array[Vector2i]) -> void:
+	if _anim:
+		await _walk_along(path)
+		return
 	for step in path:
 		var target := board.cell_to_world(step)
 		face(target)
@@ -52,6 +58,20 @@ func move_along(path: Array[Vector2i]) -> void:
 		await get_tree().create_timer(STEP_PAUSE).timeout
 
 
+## A model with animations walks the path at a steady pace.
+func _walk_along(path: Array[Vector2i]) -> void:
+	_anim.play("Walk", 0.2)
+	for step in path:
+		var target := board.cell_to_world(step)
+		face(target)
+		var tween := create_tween()
+		tween.tween_property(self, "position", target, STEP_TIME * 1.4)
+		await tween.finished
+		Sound.play("step")
+		cell = step
+	_anim.play("Idle", 0.3)
+
+
 func face(target: Vector3) -> void:
 	var flat := Vector3(target.x, position.y, target.z)
 	if position.distance_to(flat) > 0.01:
@@ -62,6 +82,13 @@ func face(target: Vector3) -> void:
 ## call recover() afterwards to step back.
 func lunge(target: Figure) -> void:
 	face(target.position)
+	if _anim:
+		_anim.play("Attack1", 0.1)
+		_anim.queue("Idle")
+		var step := create_tween()
+		step.tween_property(_body, "position", Vector3(0, 0, -0.2), stats.hit_time).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		await step.finished
+		return
 	var tween := create_tween()
 	# Rear back and raise the weapon...
 	tween.tween_property(_body, "position", Vector3(0, 0, 0.18), 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
@@ -106,8 +133,8 @@ func take_damage(amount: int, attacker: Figure = null, crit := false) -> void:
 	Effects.blood_burst(get_parent(), position + Vector3(0, stats.model_height * 0.6, 0), away, 40 if crit else 24)
 
 	var tween := create_tween()
-	tween.tween_property(_body_material, "emission_energy_multiplier", 4.0, 0.04)
-	tween.tween_property(_body_material, "emission_energy_multiplier", 0.0, 0.5)
+	tween.tween_property(_shade, "albedo_color", Color(1, 0.1, 0.05, 0.7), 0.04)
+	tween.tween_property(_shade, "albedo_color", Color(1, 0.1, 0.05, 0.0), 0.5)
 	var knock := create_tween()
 	knock.tween_property(_body, "global_position", _body.global_position + away * (0.35 if crit else 0.2), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	knock.parallel().tween_property(_body, "rotation_degrees:z", randf_range(-12.0, 12.0), 0.08)
@@ -145,8 +172,8 @@ func show_float_text(text: String, color: Color, size := 1.0) -> void:
 ## (The eyes stay lit, faintly.)
 func emerge(on_roar: Callable) -> void:
 	var hidden: Array[Node3D] = []
-	for child in get_children() + _body.get_children():
-		if child is MeshInstance3D and not _eyes.has(child) and child.visible:
+	for child in find_children("*", "MeshInstance3D", true, false):
+		if not _eyes.has(child) and child.visible:
 			child.visible = false
 			hidden.append(child)
 	_label.visible = false
@@ -163,10 +190,10 @@ func emerge(on_roar: Callable) -> void:
 	for node in hidden:
 		node.visible = true
 	_body.scale = Vector3(1, 0.05, 1)
-	_body_material.albedo_color = Color.BLACK
+	_shade.albedo_color = Color.BLACK
 	var tween := create_tween()
 	tween.tween_property(_body, "scale", Vector3.ONE, 0.7).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(_body_material, "albedo_color", stats.color, 1.0)
+	tween.parallel().tween_property(_shade, "albedo_color", Color(0, 0, 0, 0), 1.0)
 	if _eye_material:
 		tween.parallel().tween_property(_eye_material, "emission_energy_multiplier", 3.0, 1.0)
 	await tween.finished
@@ -179,14 +206,20 @@ func _die() -> void:
 	if _eye_material:
 		create_tween().tween_property(_eye_material, "emission_energy_multiplier", 0.0, 1.0)
 	await get_tree().create_timer(0.25).timeout
-	var tween := create_tween()
-	# Sag to the knees, then topple.
-	tween.tween_property(_body, "scale", Vector3(1.05, 0.85, 1.05), 0.3)
-	tween.tween_property(_body, "rotation_degrees:x", -90.0, 0.6).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(_body, "position:y", 0.12, 0.6)
-	tween.parallel().tween_property(_body_material, "albedo_color", stats.color.darkened(0.6), 1.5)
-	tween.tween_callback(func(): Sound.play("step", 0.0))
-	await tween.finished
+	if _anim:
+		_anim.play("Die", 0.1)
+		create_tween().tween_property(_shade, "albedo_color", Color(0, 0, 0, 0.5), 1.5)
+		await _anim.animation_finished
+		Sound.play("step", 0.0)
+	else:
+		var tween := create_tween()
+		# Sag to the knees, then topple.
+		tween.tween_property(_body, "scale", Vector3(1.05, 0.85, 1.05), 0.3)
+		tween.tween_property(_body, "rotation_degrees:x", -90.0, 0.6).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+		tween.parallel().tween_property(_body, "position:y", 0.12, 0.6)
+		tween.parallel().tween_property(_shade, "albedo_color", Color(0, 0, 0, 0.6), 1.5)
+		tween.tween_callback(func(): Sound.play("step", 0.0))
+		await tween.finished
 	Effects.blood_pool(get_parent(), position)
 	Effects.dust_puff(get_parent(), position, 12, 0.4)
 	await get_tree().create_timer(0.6).timeout
@@ -212,32 +245,11 @@ func _build_model() -> void:
 
 	_body = Node3D.new()
 	add_child(_body)
-
-	_body_material = StandardMaterial3D.new()
-	_body_material.albedo_color = stats.color
-	_body_material.roughness = 0.7
-	_body_material.emission_enabled = true
-	_body_material.emission = Color(1, 0.2, 0.1)
-	_body_material.emission_energy_multiplier = 0.0
-
 	var h := stats.model_height
-	var torso_mesh := CapsuleMesh.new()
-	torso_mesh.radius = 0.2 * h + 0.04
-	torso_mesh.height = 0.75 * h
-	var torso := MeshInstance3D.new()
-	torso.mesh = torso_mesh
-	torso.material_override = _body_material
-	torso.position.y = 0.08 + torso_mesh.height / 2.0
-	_body.add_child(torso)
-
-	var head_mesh := SphereMesh.new()
-	head_mesh.radius = 0.14 * h + 0.02
-	head_mesh.height = head_mesh.radius * 2.0
-	var head := MeshInstance3D.new()
-	head.mesh = head_mesh
-	head.material_override = _body_material
-	head.position.y = 0.08 + torso_mesh.height + head_mesh.radius * 0.8
-	_body.add_child(head)
+	if stats.model_path.is_empty():
+		_build_shapes(h)
+	else:
+		_build_real_model(h)
 
 	if not stats.is_hero:
 		_eye_material = StandardMaterial3D.new()
@@ -246,16 +258,74 @@ func _build_model() -> void:
 		_eye_material.emission = Color(1, 0.08, 0.02)
 		_eye_material.emission_energy_multiplier = 0.0
 		var eye_mesh := SphereMesh.new()
-		eye_mesh.radius = 0.03 * h + 0.012
+		eye_mesh.radius = 0.012 * h + 0.008
 		eye_mesh.height = eye_mesh.radius * 2.0
 		for side in [-1, 1]:
 			var eye := MeshInstance3D.new()
 			eye.mesh = eye_mesh
 			eye.material_override = _eye_material
-			eye.position = head.position + Vector3(side * head_mesh.radius * 0.4, head_mesh.radius * 0.15, -head_mesh.radius * 0.9)
+			eye.position = Vector3(side * 0.035 * h, stats.eye_height * h, -0.12 * h)
 			eye.visible = false
 			_body.add_child(eye)
 			_eyes.append(eye)
+
+	_shade = StandardMaterial3D.new()
+	_shade.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_shade.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_shade.albedo_color = Color(0, 0, 0, 0)
+	for mesh in _body.find_children("*", "MeshInstance3D", true, false):
+		if not _eyes.has(mesh):
+			(mesh as MeshInstance3D).material_overlay = _shade
+
+	_label = Label3D.new()
+	_label.font_size = 40
+	_label.outline_size = 10
+	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_label.no_depth_test = true
+	_label.position.y = h + 0.6
+	add_child(_label)
+
+
+## The unit's model, scaled to `h` squares tall, idling.
+func _build_real_model(h: float) -> void:
+	var model: Node3D = load(stats.model_path).instantiate()
+	# Animated models stand on their origin; the rest pose tells us their height.
+	model.scale = Vector3.ONE * h / Models.bounds(model).size.y
+	_body.add_child(model)
+	var players := model.find_children("*", "AnimationPlayer", true, false)
+	if players.is_empty():
+		return
+	_anim = players[0]
+	for loop in ["Idle", "Walk"]:
+		if _anim.has_animation(loop):
+			_anim.get_animation(loop).loop_mode = Animation.LOOP_LINEAR
+	_anim.play("Idle")
+	# Start each figure at a different point, so they don't breathe in step.
+	_anim.seek(randf() * _anim.current_animation_length)
+
+
+func _build_shapes(h: float) -> void:
+	var body_material := StandardMaterial3D.new()
+	body_material.albedo_color = stats.color
+	body_material.roughness = 0.7
+
+	var torso_mesh := CapsuleMesh.new()
+	torso_mesh.radius = 0.2 * h + 0.04
+	torso_mesh.height = 0.75 * h
+	var torso := MeshInstance3D.new()
+	torso.mesh = torso_mesh
+	torso.material_override = body_material
+	torso.position.y = 0.08 + torso_mesh.height / 2.0
+	_body.add_child(torso)
+
+	var head_mesh := SphereMesh.new()
+	head_mesh.radius = 0.14 * h + 0.02
+	head_mesh.height = head_mesh.radius * 2.0
+	var head := MeshInstance3D.new()
+	head.mesh = head_mesh
+	head.material_override = body_material
+	head.position.y = 0.08 + torso_mesh.height + head_mesh.radius * 0.8
+	_body.add_child(head)
 
 	# The weapon points forward (-Z), so you can see which way a figure faces.
 	var blade_mat := StandardMaterial3D.new()
@@ -269,11 +339,3 @@ func _build_model() -> void:
 	blade.material_override = blade_mat
 	blade.position = Vector3(0.22 * h + 0.06, 0.08 + torso_mesh.height * 0.55, -0.25 * h)
 	_body.add_child(blade)
-
-	_label = Label3D.new()
-	_label.font_size = 40
-	_label.outline_size = 10
-	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_label.no_depth_test = true
-	_label.position.y = h + 0.6
-	add_child(_label)

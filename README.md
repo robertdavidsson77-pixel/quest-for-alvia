@@ -27,6 +27,7 @@ A grim, turn-based dungeon board game in Godot 4.7, in the spirit of HeroQuest a
 - `scripts/hud.gd` – the dice tray, log and buttons.
 - `scripts/camera_rig.gd` – the camera.
 - `scripts/sound.gd` – music and sound effects. The `SOUNDS` list at the top says which file plays for each event. Files live in `audio/`; credits and licences are in `audio/CREDITS.md`.
+- `models/` – 3D models (from the open-source Dungeon Keeper remake OpenDungeons) for the figures and the dungeon. A unit's model is set by `model_path` in its `data/units/*.tres` file; `scripts/models.gd` scales them to fit the board. Credits and licences are in `models/CREDITS.md`.
 
 ## Automated test
 `tests/autoplay.gd` plays three games with a simple bot and prints the result:
