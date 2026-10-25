@@ -5,6 +5,8 @@ extends CanvasLayer
 signal roll_pressed
 signal end_turn_pressed
 signal restart_pressed
+signal volume_changed(value: float)
+signal mute_pressed
 
 const BONE := Color(0.86, 0.82, 0.72)
 const INK := Color(0.12, 0.1, 0.09)
@@ -18,6 +20,8 @@ var _dice_caption: Label
 var _dice_row: HBoxContainer
 var _roll_button: Button
 var _end_button: Button
+var _mute_button: Button
+var _volume_slider: HSlider
 var _end_screen: Control
 var _end_title: Label
 var _end_subtitle: Label
@@ -75,7 +79,27 @@ func _ready() -> void:
 	_end_button.pressed.connect(func(): end_turn_pressed.emit())
 	buttons.add_child(_end_button)
 
-	var help := _make_label("Click a lit square to move. Click a gold door next to you to open it.\nClick a monster next to you to attack.\nRight-drag or Q / E rotate   ·   R / F tilt   ·   W A S D pan   ·   wheel zoom\nT top-down view   ·   C reset camera", 15, Color(BONE, 0.6))
+	# Bottom left, under the log: sound on/off and volume.
+	var sound_row := HBoxContainer.new()
+	_place(sound_row, Control.PRESET_BOTTOM_LEFT, Rect2(24, -58, 400, 36))
+	sound_row.add_theme_constant_override("separation", 12)
+	root.add_child(sound_row)
+	_mute_button = _make_button("")
+	_mute_button.custom_minimum_size = Vector2(150, 36)
+	_mute_button.add_theme_font_size_override("font_size", 16)
+	_mute_button.pressed.connect(func(): mute_pressed.emit())
+	sound_row.add_child(_mute_button)
+	_volume_slider = HSlider.new()
+	_volume_slider.min_value = 0.0
+	_volume_slider.max_value = 1.0
+	_volume_slider.step = 0.05
+	_volume_slider.focus_mode = Control.FOCUS_NONE
+	_volume_slider.custom_minimum_size = Vector2(200, 36)
+	_volume_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_volume_slider.value_changed.connect(func(v: float): volume_changed.emit(v))
+	sound_row.add_child(_volume_slider)
+
+	var help := _make_label("Click a lit square to move. Click a gold door next to you to open it.\nClick a monster next to you to attack.\nRight-drag or Q / E rotate   ·   R / F tilt   ·   W A S D pan   ·   wheel zoom\nT top-down view   ·   C reset camera   ·   M mute sound", 15, Color(BONE, 0.6))
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_place(help, Control.PRESET_TOP_RIGHT, Rect2(-640, 16, 616, 100))
 	root.add_child(help)
@@ -96,6 +120,13 @@ func set_buttons(can_roll: bool, can_end: bool) -> void:
 	_end_button.disabled = not can_end
 
 
+## Shows the current volume (0..1) and whether sound is muted.
+func set_volume(value: float, muted: bool) -> void:
+	_volume_slider.set_value_no_signal(value)
+	_volume_slider.modulate.a = 0.4 if muted else 1.0
+	_mute_button.text = "Sound off  [M]" if muted else "Sound on  [M]"
+
+
 func log_line(bbcode: String) -> void:
 	_log.append_text(bbcode + "\n")
 
@@ -113,11 +144,13 @@ func show_dice(caption: String, sides: int, results: Array) -> void:
 		panels.append(panel)
 		faces.append(panel.get_child(0).get_child(0) as Label)
 
+	Sound.play("dice_shake")
 	for i in 9:
 		for face in faces:
 			face.text = str(randi_range(1, sides))
 		await get_tree().create_timer(0.05).timeout
 
+	Sound.play("die_land" if results.size() == 1 else "dice_land")
 	for i in results.size():
 		faces[i].text = str(results[i])
 		if sides == 20 and results[i] == 20:
@@ -157,6 +190,9 @@ func _build_end_screen(root: Control) -> void:
 	again.custom_minimum_size = Vector2(240, 48)
 	again.pressed.connect(func(): restart_pressed.emit())
 	box.add_child(again)
+	var credits := _make_label("Music: \"Dark Quest\" by Alexandr Zhelanov (CC-BY 4.0)  ·  \"Dark Descent\" by Matthew Pablo (CC-BY 3.0)", 14, Color(BONE, 0.6))
+	credits.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(credits)
 
 
 ## Anchors `control` to a corner or edge of the screen, then offsets it by `rect`.

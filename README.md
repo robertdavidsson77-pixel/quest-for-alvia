@@ -14,6 +14,7 @@ A grim, turn-based dungeon board game in Godot 4.7, in the spirit of HeroQuest a
 - Click a blue square to move. You can split your movement before and after attacking.
 - Closed doors next to you glow gold. Click one to open it; this is free and does not use your action. The room behind it is revealed, and any monster inside wakes up.
 - Click the goblin when it's next to you (red square) to attack: d20 + 5 against its armour class 15.
+- **M** mutes or unmutes sound. The slider in the bottom-left corner sets the volume.
 - **Enter** ends your turn. Then the goblin moves 8 squares and attacks.
 - Camera: hold the right mouse button and drag to rotate and tilt freely. Hold Q / E to rotate, R / F to tilt, W A S D to pan, mouse wheel to zoom. T flips to a straight top-down view and back, C resets the camera.
 
@@ -25,6 +26,7 @@ A grim, turn-based dungeon board game in Godot 4.7, in the spirit of HeroQuest a
 - `scripts/figure.gd` – a hero or monster on the board.
 - `scripts/hud.gd` – the dice tray, log and buttons.
 - `scripts/camera_rig.gd` – the camera.
+- `scripts/sound.gd` – music and sound effects. The `SOUNDS` list at the top says which file plays for each event. Files live in `audio/`; credits and licences are in `audio/CREDITS.md`.
 
 ## Automated test
 `tests/autoplay.gd` plays three games with a simple bot and prints the result:

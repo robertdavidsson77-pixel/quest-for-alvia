@@ -16,3 +16,6 @@ extends Resource
 @export var speed: int = 0
 @export var color: Color = Color.WHITE
 @export var model_height: float = 1.0
+## Sound name for this unit's grunts (see scripts/sound.gd). Empty means silent.
+## "<voice>_wake" plays when it first sees the hero.
+@export var voice: String = ""
