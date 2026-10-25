@@ -35,6 +35,7 @@ func move_along(path: Array[Vector2i]) -> void:
 	for step in path:
 		var target := board.cell_to_world(step)
 		face(target)
+		Sound.play("step")
 		var tween := create_tween()
 		tween.tween_property(self, "position", target, STEP_TIME)
 		# A little hop, like moving a miniature by hand.
@@ -63,6 +64,7 @@ func take_damage(amount: int) -> void:
 	hp = maxi(0, hp - amount)
 	_update_label()
 	show_float_text("-%d" % amount, Color(1, 0.3, 0.2))
+	Sound.play(stats.voice)
 	var tween := create_tween()
 	tween.tween_property(_body_material, "emission_energy_multiplier", 2.0, 0.05)
 	tween.tween_property(_body_material, "emission_energy_multiplier", 0.0, 0.25)
@@ -87,6 +89,7 @@ func show_float_text(text: String, color: Color) -> void:
 
 
 func _die() -> void:
+	Sound.play(stats.voice, 0.0)
 	_label.visible = false
 	var tween := create_tween()
 	tween.tween_property(_body, "rotation_degrees:x", -90.0, 0.4).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)

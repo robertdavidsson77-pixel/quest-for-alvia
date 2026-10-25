@@ -57,6 +57,11 @@ func _ready() -> void:
 	hud.roll_pressed.connect(_on_roll)
 	hud.end_turn_pressed.connect(_on_end_turn)
 	hud.restart_pressed.connect(func(): get_tree().reload_current_scene())
+	hud.volume_changed.connect(func(v: float): Sound.volume = v)
+	hud.mute_pressed.connect(func():
+		Sound.toggle_mute()
+		hud.set_volume(Sound.volume, Sound.muted))
+	hud.set_volume(Sound.volume, Sound.muted)
 
 	hud.log_line("[b]%s[/b]" % QuestCellar.TITLE)
 	hud.log_line("[color=#a99]%s[/color]" % QuestCellar.INTRO)
@@ -80,7 +85,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_on_cell_clicked(_cell_under_mouse(event.position))
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_SPACE:
+		if event.keycode == KEY_M:
+			Sound.toggle_mute()
+			hud.set_volume(Sound.volume, Sound.muted)
+		elif event.keycode == KEY_SPACE:
 			_on_roll()
 		elif event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
 			_on_end_turn()
@@ -151,6 +159,8 @@ func _open_door(cell: Vector2i) -> void:
 	board.clear_highlights()
 	hud.log_line("The door groans open...")
 	camera_rig.focus_on(board.cell_to_world(cell))
+	Sound.play("door_creak")
+	Sound.play("door")
 	await board.open_door(cell)
 	for m in monsters:
 		if not m.visible and board.is_room_revealed(board.room_at(m.cell)):
@@ -165,6 +175,7 @@ func _wake(m: Figure) -> void:
 	var final_scale := m.scale
 	m.scale = Vector3(final_scale.x, 0.01, final_scale.z)
 	m.visible = true
+	Sound.play(m.stats.voice + "_wake")
 	var tween := create_tween()
 	tween.tween_property(m, "scale", final_scale, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tween.finished
@@ -258,6 +269,7 @@ func _resolve_attack(attacker: Figure, defender: Figure) -> void:
 	var d20 := Dice.roll(20)
 	var total := d20 + a.attack_bonus
 	await hud.show_dice("%s attacks: d20 + %d vs AC %d" % [a.display_name, a.attack_bonus, defender.stats.armor_class], 20, [d20])
+	Sound.play(a.voice)
 	await attacker.play_attack(defender)
 
 	var crit := d20 == 20
@@ -266,9 +278,13 @@ func _resolve_attack(attacker: Figure, defender: Figure) -> void:
 	if not hit:
 		var why := "a natural 1" if d20 == 1 else "%d" % total
 		hud.log_line("%s swings the %s: %s, a miss." % [who, a.weapon_name, why])
+		Sound.play("miss")
 		defender.show_float_text("Miss", Color(0.8, 0.8, 0.8))
 		return
 
+	Sound.play("hit")
+	if crit:
+		Sound.play("crit")
 	var dice_count := a.damage_dice_count * (2 if crit else 1)
 	var rolls := Dice.roll_many(dice_count, a.damage_die)
 	await hud.show_dice("Damage: %dd%d + %d" % [dice_count, a.damage_die, a.damage_bonus], a.damage_die, rolls)
