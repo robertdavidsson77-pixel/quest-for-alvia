@@ -75,9 +75,9 @@ func _ready() -> void:
 	_end_button.pressed.connect(func(): end_turn_pressed.emit())
 	buttons.add_child(_end_button)
 
-	var help := _make_label("Click a lit square to move. Click a goblin next to you to attack.\nRight-drag or Q / E rotate   ·   R / F tilt   ·   W A S D pan   ·   wheel zoom\nT top-down view   ·   C reset camera", 15, Color(BONE, 0.6))
+	var help := _make_label("Click a lit square to move. Click a gold door next to you to open it.\nClick a monster next to you to attack.\nRight-drag or Q / E rotate   ·   R / F tilt   ·   W A S D pan   ·   wheel zoom\nT top-down view   ·   C reset camera", 15, Color(BONE, 0.6))
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_place(help, Control.PRESET_TOP_RIGHT, Rect2(-640, 16, 616, 80))
+	_place(help, Control.PRESET_TOP_RIGHT, Rect2(-640, 16, 616, 100))
 	root.add_child(help)
 
 	_build_end_screen(root)

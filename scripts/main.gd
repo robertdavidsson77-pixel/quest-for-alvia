@@ -1,12 +1,11 @@
-## v0.1: one Fighter against one goblin in one room.
-## Runs the turn loop: the hero's turn (roll, move, act), then the dungeon's turn.
+## The Fighter's first quest: start at the foot of the stairs, open the door,
+## face what lies beyond. Runs the turn loop: the hero's turn (roll, move, act),
+## then the dungeon's turn. Opening a door is free; it does not use the action.
 extends Node3D
 
 const FIGHTER: UnitStats = preload("res://data/units/fighter.tres")
 const GOBLIN: UnitStats = preload("res://data/units/goblin.tres")
-
-const ROOM_WIDTH := 10
-const ROOM_HEIGHT := 8
+const MONSTERS := {"g": GOBLIN}  # map character -> monster
 
 enum Phase { HERO, BUSY, OVER }
 
@@ -23,7 +22,6 @@ var moves_left := 0
 var has_acted := false
 var _reachable := {}  # cell -> steps, for the hero's current move
 
-var _torches: Array[OmniLight3D] = []
 var _time := 0.0
 
 
@@ -33,14 +31,12 @@ func _ready() -> void:
 
 	board = Board.new()
 	add_child(board)
-	var pillars: Array[Vector2i] = [Vector2i(3, 2), Vector2i(6, 2), Vector2i(3, 5), Vector2i(6, 5)]
-	board.build(ROOM_WIDTH, ROOM_HEIGHT, pillars)
-	_add_torches()
+	board.build(QuestCellar.MAP)
 
 	camera_rig = CameraRig.new()
 	add_child(camera_rig)
 
-	hero = _spawn(FIGHTER, Vector2i(1, 4))
+	hero = _spawn(FIGHTER, board.hero_start)
 	var lantern := OmniLight3D.new()
 	lantern.light_color = Color(1.0, 0.75, 0.45)
 	lantern.light_energy = 1.2
@@ -48,10 +44,13 @@ func _ready() -> void:
 	lantern.position.y = 1.6
 	hero.add_child(lantern)
 
-	monsters.append(_spawn(GOBLIN, Vector2i(8, 3)))
-	for m in monsters:
-		m.face(hero.position)
-	hero.face(monsters[0].position)
+	# Monsters wait in the dark, unseen, until their room is revealed.
+	for spawn in board.spawns:
+		var m := _spawn(MONSTERS[spawn["char"]], spawn["cell"])
+		m.visible = false
+		monsters.append(m)
+	hero.face(hero.position + Vector3.FORWARD)
+	camera_rig.focus_on(hero.position)
 
 	hud = Hud.new()
 	add_child(hud)
@@ -59,15 +58,19 @@ func _ready() -> void:
 	hud.end_turn_pressed.connect(_on_end_turn)
 	hud.restart_pressed.connect(func(): get_tree().reload_current_scene())
 
-	hud.log_line("[color=#a99]The cellar door slams shut behind you. Something snickers in the dark.[/color]")
+	hud.log_line("[b]%s[/b]" % QuestCellar.TITLE)
+	hud.log_line("[color=#a99]%s[/color]" % QuestCellar.INTRO)
+	await board.reveal_room(board.room_at(board.hero_start), board.hero_start)
 	_start_hero_turn()
 
 
 func _process(delta: float) -> void:
 	_time += delta
-	for i in _torches.size():
-		var t := _torches[i]
-		t.light_energy = 1.6 + 0.3 * sin(_time * 9.0 + i * 1.7) + 0.2 * sin(_time * 23.0 + i)
+	for i in board.torch_lights.size():
+		var t := board.torch_lights[i]
+		if t.visible:
+			var flicker := 1.6 + 0.3 * sin(_time * 9.0 + i * 1.7) + 0.2 * sin(_time * 23.0 + i)
+			t.light_energy = flicker * t.get_meta("fade", 1.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -111,6 +114,14 @@ func _on_roll() -> void:
 func _on_cell_clicked(cell: Vector2i) -> void:
 	if phase != Phase.HERO:
 		return
+	if board.is_door_closed(cell):
+		if not Board.are_adjacent(hero.cell, cell):
+			hud.log_line("[color=#888]Move next to the door first.[/color]")
+		elif board.is_door_locked(cell):
+			hud.log_line("[color=#888]The door is barred from the other side. It will not budge... (to be continued)[/color]")
+		else:
+			await _open_door(cell)
+		return
 	var target := _monster_at(cell)
 	if target != null:
 		if has_acted:
@@ -133,6 +144,32 @@ func _hero_move(cell: Vector2i) -> void:
 	phase = Phase.HERO
 	_refresh_hero_ui()
 	_end_turn_if_done()
+
+
+func _open_door(cell: Vector2i) -> void:
+	phase = Phase.BUSY
+	board.clear_highlights()
+	hud.log_line("The door groans open...")
+	camera_rig.focus_on(board.cell_to_world(cell))
+	await board.open_door(cell)
+	for m in monsters:
+		if not m.visible and board.is_room_revealed(board.room_at(m.cell)):
+			await _wake(m)
+	phase = Phase.HERO
+	_refresh_hero_ui()
+
+
+## A monster steps out of the dark: it pops up and turns to face the hero.
+func _wake(m: Figure) -> void:
+	m.face(hero.position)
+	var final_scale := m.scale
+	m.scale = Vector3(final_scale.x, 0.01, final_scale.z)
+	m.visible = true
+	var tween := create_tween()
+	tween.tween_property(m, "scale", final_scale, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	await tween.finished
+	m.show_float_text("!", Color(0.95, 0.3, 0.2))
+	hud.log_line("[color=#c66]A %s! It has seen you.[/color]" % m.stats.display_name.to_lower())
 
 
 func _hero_attack(target: Figure) -> void:
@@ -181,6 +218,7 @@ func _refresh_hero_ui() -> void:
 		board.show_move_cells(cells)
 	else:
 		board.clear_highlights()
+	board.show_door_cells(board.closed_doors_next_to(hero.cell))
 	if not has_acted:
 		var targets: Array = []
 		for m in _living_monsters():
@@ -193,7 +231,7 @@ func _refresh_hero_ui() -> void:
 
 func _dungeon_turn() -> void:
 	hud.set_turn("Round %d  ·  The dungeon stirs" % round_number)
-	for m in _living_monsters():
+	for m in _awake_monsters():
 		await get_tree().create_timer(0.35).timeout
 		if not Board.are_adjacent(m.cell, hero.cell):
 			var path := board.path_to_adjacent(m.cell, hero.cell, _occupied_except(m))
@@ -259,7 +297,7 @@ func _finish(won: bool) -> void:
 	phase = Phase.OVER
 	board.clear_highlights()
 	if won:
-		hud.show_end("VICTORY", "The goblin lies still. The cellar is yours, for now.", true)
+		hud.show_end("VICTORY", QuestCellar.VICTORY, true)
 	else:
 		hud.show_end("YOU HAVE FALLEN", "Your Fighter's name will not be remembered in Alvia.", false)
 
@@ -272,8 +310,17 @@ func _living_monsters() -> Array[Figure]:
 	return alive
 
 
-func _monster_at(cell: Vector2i) -> Figure:
+## Living monsters whose room has been revealed; the rest sleep in the dark.
+func _awake_monsters() -> Array[Figure]:
+	var awake: Array[Figure] = []
 	for m in _living_monsters():
+		if m.visible:
+			awake.append(m)
+	return awake
+
+
+func _monster_at(cell: Vector2i) -> Figure:
+	for m in _awake_monsters():
 		if m.cell == cell:
 			return m
 	return null
@@ -318,34 +365,3 @@ func _build_atmosphere() -> void:
 	moon.rotation_degrees = Vector3(-60, 30, 0)
 	add_child(moon)
 
-
-func _add_torches() -> void:
-	var spots: Array[Vector2i] = [Vector2i(-1, 1), Vector2i(-1, 6), Vector2i(ROOM_WIDTH, 1), Vector2i(ROOM_WIDTH, 6), Vector2i(4, -1), Vector2i(5, ROOM_HEIGHT)]
-	var flame_mat := StandardMaterial3D.new()
-	flame_mat.albedo_color = Color(1, 0.6, 0.2)
-	flame_mat.emission_enabled = true
-	flame_mat.emission = Color(1, 0.5, 0.15)
-	flame_mat.emission_energy_multiplier = 4.0
-	for spot in spots:
-		var wall_pos := board.cell_to_world(spot)
-		# Hang the torch on the wall face that looks into the room.
-		var inner := Vector2i(clampi(spot.x, 0, ROOM_WIDTH - 1), clampi(spot.y, 0, ROOM_HEIGHT - 1))
-		var inward := (board.cell_to_world(inner) - wall_pos).normalized()
-		var pos := wall_pos + inward * 0.55 + Vector3(0, 1.1, 0)
-
-		var flame_mesh := SphereMesh.new()
-		flame_mesh.radius = 0.08
-		flame_mesh.height = 0.2
-		var flame := MeshInstance3D.new()
-		flame.mesh = flame_mesh
-		flame.material_override = flame_mat
-		flame.position = pos
-		add_child(flame)
-
-		var light := OmniLight3D.new()
-		light.light_color = Color(1.0, 0.55, 0.25)
-		light.omni_range = 6.0
-		light.shadow_enabled = true
-		light.position = pos + inward * 0.2
-		add_child(light)
-		_torches.append(light)

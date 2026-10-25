@@ -6,6 +6,7 @@ var wins := 0
 var main: Node
 
 func _initialize() -> void:
+	Engine.time_scale = 10.0
 	_next_game()
 
 func _next_game() -> void:
@@ -14,6 +15,14 @@ func _next_game() -> void:
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	_play()
+
+func _unlocked_door() -> Vector2i:
+	for y in main.board.height:
+		for x in main.board.width:
+			var c := Vector2i(x, y)
+			if main.board.is_door_closed(c) and not main.board.is_door_locked(c):
+				return c
+	return Vector2i(-1, -1)
 
 func _play() -> void:
 	while true:
@@ -32,6 +41,21 @@ func _play() -> void:
 		if main.phase != main.Phase.HERO:
 			continue
 		var gob = main._living_monsters()[0]
+		if not gob.visible:
+			# Walk to the unlocked door and open it.
+			var door := _unlocked_door()
+			if Board.are_adjacent(main.hero.cell, door):
+				await main._on_cell_clicked(door)
+				continue
+			if not main.has_rolled:
+				await main._on_roll()
+				continue
+			if main.moves_left > 0:
+				var p = main.board.path_to_adjacent(main.hero.cell, door, main._occupied_except(main.hero))
+				await main._on_cell_clicked(p[mini(p.size(), main.moves_left) - 1])
+				continue
+			main._on_end_turn()
+			continue
 		if not main.has_acted and Board.are_adjacent(main.hero.cell, gob.cell):
 			await main._on_cell_clicked(gob.cell)
 			continue
