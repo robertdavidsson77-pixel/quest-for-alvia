@@ -1,20 +1,18 @@
 [gd_resource type="Resource" script_class="UnitStats" format=3]
 
-[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_co3rc"]
-[ext_resource type="Resource" path="res://data/cards/mighty_blow.tres" id="2_by0i1"]
-[ext_resource type="Resource" path="res://data/cards/second_wind.tres" id="3_g340g"]
-[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="4_nj8uy"]
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_mw4a4"]
+[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="2_6tahm"]
 
 [resource]
-script = ExtResource("4_nj8uy")
+script = ExtResource("2_6tahm")
 display_name = "Fighter"
 is_hero = true
-max_hp = 13
-armor_class = 16
-attack_bonus = 5
-weapon_name = "longsword"
-damage_die = 8
-damage_bonus = 3
+strength = 3
+lives = 5
+fate = 1
 color = Color(0.4, 0.45, 0.55, 1)
-dex_save = 1
-cards = Array[ExtResource("1_co3rc")]([ExtResource("2_by0i1"), ExtResource("3_g340g")])
+weapon_name = "sword"
+weapon_bonus = 1
+armour_name = "chain mail"
+armour_save = 5
+best_of_two = true

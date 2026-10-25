@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="UnitStats" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_tde5c"]
+[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="2_yr016"]
+
+[resource]
+script = ExtResource("2_yr016")
+display_name = "Orc"
+strength = 4
+speed = 6
+color = Color(0.45, 0.3, 0.2, 1)
+model_height = 1.15
+weapon_name = "cleaver"

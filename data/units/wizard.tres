@@ -2,22 +2,18 @@
 
 [ext_resource type="Script" path="res://scripts/card_data.gd" id="1_cjk6a"]
 [ext_resource type="Resource" path="res://data/cards/fire_bolt.tres" id="2_fe0np"]
-[ext_resource type="Resource" path="res://data/cards/magic_missile.tres" id="3_5rii0"]
-[ext_resource type="Resource" path="res://data/cards/sleep.tres" id="4_n0475"]
+[ext_resource type="Resource" path="res://data/cards/sleep.tres" id="3_5rii0"]
+[ext_resource type="Resource" path="res://data/cards/mist_step.tres" id="4_n0475"]
 [ext_resource type="Script" path="res://scripts/unit_stats.gd" id="5_rc1fk"]
 
 [resource]
 script = ExtResource("5_rc1fk")
 display_name = "Wizard"
 is_hero = true
-max_hp = 8
-armor_class = 12
-attack_bonus = 2
-weapon_name = "dagger"
-damage_die = 4
+craft = 5
+lives = 3
+fate = 2
 color = Color(0.35, 0.2, 0.5, 1)
 model_height = 0.95
-spell_attack_bonus = 5
-spell_save_dc = 13
-dex_save = 2
+weapon_name = "staff"
 cards = Array[ExtResource("1_cjk6a")]([ExtResource("2_fe0np"), ExtResource("3_5rii0"), ExtResource("4_n0475")])

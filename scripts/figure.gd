@@ -8,13 +8,13 @@ signal died(figure: Figure)
 const STEP_TIME := 0.18
 
 var stats: UnitStats
-var hp := 0
+var lives := 0
+var fate_left := 0
 var cell := Vector2i.ZERO
 var board: Board
 var is_ai := false
-var card_uses := {}  # CardData -> uses left this quest
+var card_uses := {}  # CardData -> casts left this quest
 var sleep_turns := 0
-var bless_until_round := 0
 
 var _body: Node3D
 var _label: Label3D
@@ -25,26 +25,26 @@ var _ring: MeshInstance3D
 func setup(unit_stats: UnitStats, on_board: Board, start: Vector2i) -> void:
 	stats = unit_stats
 	board = on_board
-	hp = stats.max_hp
+	lives = stats.lives
+	fate_left = stats.fate
 	cell = start
 	position = board.cell_to_world(start)
 	for card in stats.cards:
-		card_uses[card] = card.uses_per_quest
+		card_uses[card] = 1
 	_build_model()
 	_update_label()
 
 
 func is_alive() -> bool:
-	return hp > 0
+	return lives > 0
 
 
 func can_play(card: CardData) -> bool:
-	return card.timing == CardData.Timing.AT_WILL or card_uses.get(card, 0) > 0
+	return card_uses.get(card, 0) > 0
 
 
 func spend(card: CardData) -> void:
-	if card.timing == CardData.Timing.PER_QUEST:
-		card_uses[card] = maxi(0, card_uses.get(card, 0) - 1)
+	card_uses[card] = maxi(0, card_uses.get(card, 0) - 1)
 
 
 ## Shows or hides the glowing ring that marks whose turn it is.
@@ -53,10 +53,10 @@ func set_active(active: bool) -> void:
 
 
 func heal(amount: int) -> void:
-	var before := hp
-	hp = mini(stats.max_hp, hp + amount)
+	var before := lives
+	lives = mini(stats.lives, lives + amount)
 	_update_label()
-	show_float_text("+%d" % (hp - before), Color(0.4, 1.0, 0.5))
+	show_float_text("+%d %s" % [lives - before, "Life" if lives - before == 1 else "Lives"], Color(0.4, 1.0, 0.5))
 
 
 func fall_asleep(turns: int) -> void:
@@ -91,6 +91,18 @@ func move_along(path: Array[Vector2i]) -> void:
 		cell = step
 
 
+## Vanish and reappear on another square (Mist Step).
+func teleport_to(target_cell: Vector2i) -> void:
+	var shrink := create_tween()
+	shrink.tween_property(self, "scale", Vector3.ONE * 0.05, 0.2)
+	await shrink.finished
+	position = board.cell_to_world(target_cell)
+	cell = target_cell
+	var grow := create_tween()
+	grow.tween_property(self, "scale", Vector3.ONE, 0.2)
+	await grow.finished
+
+
 func face(target: Vector3) -> void:
 	var flat := Vector3(target.x, position.y, target.z)
 	if position.distance_to(flat) > 0.01:
@@ -106,15 +118,15 @@ func play_attack(target: Figure) -> void:
 	await tween.finished
 
 
-func take_damage(amount: int) -> void:
-	hp = maxi(0, hp - amount)
+func lose_lives(amount: int) -> void:
+	lives = maxi(0, lives - amount)
 	sleep_turns = 0
 	_update_label()
-	show_float_text("-%d" % amount, Color(1, 0.3, 0.2))
+	show_float_text("-%d %s" % [amount, "Life" if amount == 1 else "Lives"], Color(1, 0.3, 0.2))
 	var tween := create_tween()
 	tween.tween_property(_body_material, "emission_energy_multiplier", 2.0, 0.05)
 	tween.tween_property(_body_material, "emission_energy_multiplier", 0.0, 0.25)
-	if hp == 0:
+	if lives == 0:
 		await _die()
 
 
@@ -145,7 +157,7 @@ func _die() -> void:
 
 
 func _update_label() -> void:
-	_label.text = "%s  %d/%d%s" % [stats.display_name, hp, stats.max_hp, "  (asleep)" if sleep_turns > 0 else ""]
+	_label.text = "%s  %d/%d%s" % [stats.display_name, lives, stats.lives, "  (asleep)" if sleep_turns > 0 else ""]
 
 
 func _build_model() -> void:

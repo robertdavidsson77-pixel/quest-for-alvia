@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="UnitStats" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_0bo4j"]
+[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="2_hk6eh"]
+
+[resource]
+script = ExtResource("2_hk6eh")
+display_name = "Skeleton"
+strength = 3
+speed = 5
+color = Color(0.8, 0.78, 0.7, 1)
+model_height = 0.95
+weapon_name = "notched sword"
+is_undead = true

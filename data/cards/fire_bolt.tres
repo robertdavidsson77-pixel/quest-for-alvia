@@ -5,7 +5,5 @@
 [resource]
 script = ExtResource("1_embvg")
 title = "Fire Bolt"
-description = "Range 8. Spell attack against AC for d10 fire damage."
-effect = 2
-card_range = 8
-die = 10
+description = "Range 6. Magic fight: your d6 + Craft against the monster's. If it wins, nothing happens to you."
+card_range = 6

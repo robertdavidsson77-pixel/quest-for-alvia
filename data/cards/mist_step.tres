@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="CardData" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_vr2m8"]
+
+[resource]
+script = ExtResource("1_vr2m8")
+title = "Mist Step"
+description = "Vanish and reappear on any free square within 6, through figures and pillars."
+target = 2
+effect = 3
+card_range = 6

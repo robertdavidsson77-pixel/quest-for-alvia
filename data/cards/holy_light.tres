@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="CardData" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_1av1b"]
+
+[resource]
+script = ExtResource("1_1av1b")
+title = "Holy Light"
+description = "Range 4. Magic fight: your d6 + Craft against the monster's. Undead that lose it lose 2 Lives."
+card_range = 4
+undead_damage = 2

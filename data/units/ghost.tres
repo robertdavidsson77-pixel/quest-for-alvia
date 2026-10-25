@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="UnitStats" format=3]
+
+[ext_resource type="Script" path="res://scripts/card_data.gd" id="1_igrvc"]
+[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="2_7l6te"]
+
+[resource]
+script = ExtResource("2_7l6te")
+display_name = "Ghost"
+strength = 0
+craft = 4
+speed = 6
+color = Color(0.6, 0.7, 0.85, 1)
+weapon_name = "chilling touch"
+is_undead = true
+fights_with_craft = true

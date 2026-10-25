@@ -101,7 +101,7 @@ func _ready() -> void:
 	_end_button.pressed.connect(func(): end_turn_pressed.emit())
 	buttons.add_child(_end_button)
 
-	var help := _make_label("Click a lit square to move. Click a red square to attack.\nClick a card, then a target. Right-click or Esc cancels a card.\nRight-drag or Q / E rotate  ·  R / F tilt  ·  W A S D pan  ·  wheel zoom\nT top-down view  ·  C reset camera", 15, Color(BONE, 0.6))
+	var help := _make_label("Click a lit square to move. Click a red square to fight.\nSpells: click a card, then a target. Right-click or Esc cancels.\nRight-drag or Q / E rotate  ·  R / F tilt  ·  W A S D pan  ·  wheel zoom\nT top-down view  ·  C reset camera", 15, Color(BONE, 0.6))
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_place(help, Control.PRESET_TOP_RIGHT, Rect2(-640, 16, 616, 110))
 	_root.add_child(help)
@@ -247,7 +247,7 @@ func _build_end_screen() -> void:
 	box.add_child(again)
 
 
-func _make_card(card: CardData, uses_left: int, used_up: bool, playable: bool, selected: bool, index: int) -> Button:
+func _make_card(card: CardData, _uses_left: int, used_up: bool, playable: bool, selected: bool, index: int) -> Button:
 	var button := Button.new()
 	button.custom_minimum_size = Vector2(150, 160)
 	button.focus_mode = Control.FOCUS_NONE
@@ -283,7 +283,7 @@ func _make_card(card: CardData, uses_left: int, used_up: bool, playable: bool, s
 		column.add_child(used)
 		return button
 	column.add_child(_make_label(card.title, 17, GOLD))
-	column.add_child(_make_label(card.timing_text(uses_left), 12, Color(BONE, 0.7)))
+	column.add_child(_make_label("Once per quest", 12, Color(BONE, 0.7)))
 	var text := _make_label(card.description, 13, BONE)
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	text.add_theme_constant_override("outline_size", 0)

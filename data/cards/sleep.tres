@@ -5,10 +5,7 @@
 [resource]
 script = ExtResource("1_dn167")
 title = "Sleep"
-description = "Range 8. Living monsters in a 3x3 area fall asleep for 2 turns. Damage wakes them."
-timing = 1
-target = 3
-effect = 7
-card_range = 8
-duration = 2
-area_radius = 1
+description = "Range 6. One living monster misses its next 2 turns. No roll."
+effect = 1
+card_range = 6
+amount = 2

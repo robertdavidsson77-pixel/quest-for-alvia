@@ -1,6 +1,7 @@
-## v0.2: a party of four heroes against a pack of goblins in one room.
-## Runs the turn loop: each hero in turn (roll, move, one action), then the dungeon.
-## Heroes are steered by the player or by HeroAI; both use the same actions below.
+## v0.3: a party of four heroes against goblins and an orc in one room.
+## Talisman-style rules: fights are one d6 roll each plus Strength (or Craft),
+## and the loser loses a Life. Heroes are steered by the player or by HeroAI;
+## both use the same actions below.
 extends Node3D
 
 const HERO_STATS: Array[UnitStats] = [
@@ -11,7 +12,7 @@ const HERO_STATS: Array[UnitStats] = [
 ]
 const HERO_STARTS: Array[Vector2i] = [Vector2i(2, 4), Vector2i(1, 4), Vector2i(2, 5), Vector2i(1, 5)]
 const GOBLIN: UnitStats = preload("res://data/units/goblin.tres")
-const GOBLIN_STARTS: Array[Vector2i] = [Vector2i(12, 2), Vector2i(11, 4), Vector2i(11, 6), Vector2i(12, 8)]
+const ORC: UnitStats = preload("res://data/units/orc.tres")
 
 const ROOM_WIDTH := 14
 const ROOM_HEIGHT := 10
@@ -59,8 +60,10 @@ func _ready() -> void:
 	lantern.omni_range = 5.0
 	lantern.position.y = 1.6
 	heroes[0].add_child(lantern)
-	for start in GOBLIN_STARTS:
-		monsters.append(_spawn(GOBLIN, start))
+	monsters.append(_spawn(GOBLIN, Vector2i(12, 2)))
+	monsters.append(_spawn(GOBLIN, Vector2i(11, 4)))
+	monsters.append(_spawn(GOBLIN, Vector2i(12, 8)))
+	monsters.append(_spawn(ORC, Vector2i(11, 6)))
 	for m in monsters:
 		m.face(heroes[0].position)
 	for h in heroes:
@@ -141,6 +144,8 @@ func _dungeon_turn() -> void:
 	hud.set_turn("Round %d  ·  The dungeon stirs" % round_number)
 	for m in living_monsters():
 		await get_tree().create_timer(0.3).timeout
+		if not m.is_alive():
+			continue
 		if m.sleep_turns > 0:
 			m.sleep_tick()
 			continue
@@ -155,13 +160,11 @@ func _dungeon_turn() -> void:
 		# Anyone next to it after moving is fair game; the weakest first.
 		var target: Figure = null
 		for h in living_heroes():
-			if Board.are_adjacent(m.cell, h.cell) and (target == null or h.hp < target.hp):
+			if Board.are_adjacent(m.cell, h.cell) and (target == null or h.lives < target.lives):
 				target = h
 		if target != null:
-			await _attack(m, target, m.stats.attack_bonus, m.stats.weapon_name,
-					[[m.stats.damage_dice_count, m.stats.damage_die]], m.stats.damage_bonus)
-			if living_heroes().is_empty():
-				_finish(false)
+			await _fight(m, target, false, m.stats.weapon_name)
+			if _check_end():
 				return
 		else:
 			m.face(prey.position)
@@ -178,7 +181,7 @@ func _choose_prey(m: Figure) -> Figure:
 		if not Board.are_adjacent(m.cell, h.cell):
 			var path := board.path_to_adjacent(m.cell, h.cell, occupied_except(m))
 			steps = path.size() if not path.is_empty() else 1000 + Board.distance(m.cell, h.cell)
-		if steps < best_steps or (steps == best_steps and h.hp < best.hp):
+		if steps < best_steps or (steps == best_steps and h.lives < best.lives):
 			best = h
 			best_steps = steps
 	return best
@@ -211,37 +214,34 @@ func move_active_to(cell: Vector2i) -> void:
 	moves_left -= path.size()
 
 
-## Basic weapon attack on an adjacent monster.
+## Attack an adjacent monster with your weapon: a Strength fight.
 func weapon_attack(target: Figure) -> void:
 	has_acted = true
 	board.clear_highlights()
-	var s := active.stats
-	await _attack(active, target, s.attack_bonus, s.weapon_name, [[s.damage_dice_count, s.damage_die]], s.damage_bonus)
-	_check_victory()
+	await _fight(active, target, false, active.stats.weapon_name)
+	_check_end()
 
 
 ## Squares the card can be aimed at from where `fig` stands.
 func card_targets(fig: Figure, card: CardData) -> Array:
 	var cells: Array = []
 	match card.target:
-		CardData.Target.SELF:
-			cells.append(fig.cell)
 		CardData.Target.ENEMY:
-			var melee := card.effect == CardData.Effect.WEAPON_ATTACK or card.effect == CardData.Effect.SNEAK_ATTACK
 			for m in living_monsters():
-				if melee and Board.are_adjacent(fig.cell, m.cell):
-					cells.append(m.cell)
-				elif not melee and Board.distance(fig.cell, m.cell) <= card.card_range and board.has_line_of_sight(fig.cell, m.cell):
+				if card.effect == CardData.Effect.SLEEP and m.stats.is_undead:
+					continue
+				if Board.distance(fig.cell, m.cell) <= card.card_range and board.has_line_of_sight(fig.cell, m.cell):
 					cells.append(m.cell)
 		CardData.Target.ALLY:
 			for h in living_heroes():
 				if Board.distance(fig.cell, h.cell) <= card.card_range:
 					cells.append(h.cell)
-		CardData.Target.AREA:
+		CardData.Target.EMPTY_SQUARE:
+			var occupied := occupied_except(null)
 			for x in board.width:
 				for y in board.height:
 					var c := Vector2i(x, y)
-					if board.is_walkable(c) and Board.distance(fig.cell, c) <= card.card_range and board.has_line_of_sight(fig.cell, c):
+					if board.is_walkable(c) and not occupied.has(c) and Board.distance(fig.cell, c) <= card.card_range:
 						cells.append(c)
 	return cells
 
@@ -253,125 +253,112 @@ func play_card(card: CardData, cell: Vector2i) -> void:
 	fig.spend(card)
 	board.clear_highlights()
 	_refresh_ui()
-	hud.log_line("%s plays [color=#f2c14e]%s[/color]." % [_name(fig), card.title])
+	hud.log_line("%s casts [color=#f2c14e]%s[/color]." % [_name(fig), card.title])
 	var target := figure_at(cell)
-	var s := fig.stats
 
 	match card.effect:
-		CardData.Effect.WEAPON_ATTACK:
-			await _attack(fig, target, s.attack_bonus, s.weapon_name,
-					[[s.damage_dice_count, s.damage_die]], s.damage_bonus, card.extra_dice)
-		CardData.Effect.SNEAK_ATTACK:
-			var dice: Array = [[s.damage_dice_count, s.damage_die]]
-			if _hero_next_to(target, fig):
-				dice.append([card.dice_count, card.die])
-			else:
-				hud.log_line("[color=#888]No ally next to the target, so no sneak attack damage.[/color]")
-			await _attack(fig, target, s.attack_bonus, s.weapon_name, dice, s.damage_bonus)
-		CardData.Effect.SPELL_ATTACK:
-			await _attack(fig, target, s.spell_attack_bonus, card.title, [[card.dice_count, card.die]], card.bonus)
-		CardData.Effect.SAVE_DAMAGE:
-			var save := Dice.roll(20)
-			await hud.show_dice("%s's Dex save: d20 + %d vs DC %d" % [target.stats.display_name, target.stats.dex_save, s.spell_save_dc], 20, [save])
-			if save + target.stats.dex_save >= s.spell_save_dc:
-				hud.log_line("%s dodges the %s (%d)." % [_name(target), card.title, save + target.stats.dex_save])
-				target.show_float_text("Saved", Color(0.8, 0.8, 0.8))
-			else:
-				var count := card.dice_count * (2 if target.stats.is_undead else 1)
-				var rolls := Dice.roll_many(count, card.die)
-				await hud.show_dice("Damage: %dd%d" % [count, card.die], card.die, rolls)
-				var damage := Dice.total(rolls) + card.bonus
-				hud.log_line("%s burns %s for [b]%d[/b] damage." % [card.title, _name(target), damage])
-				await _damage(target, damage)
-		CardData.Effect.MAGIC_MISSILE:
-			for i in card.count:
-				if not target.is_alive():
-					break
-				var rolls := Dice.roll_many(card.dice_count, card.die)
-				await hud.show_dice("Dart %d: d%d + %d" % [i + 1, card.die, card.bonus], card.die, rolls)
-				var damage := Dice.total(rolls) + card.bonus
-				hud.log_line("A dart strikes %s for [b]%d[/b]." % [_name(target), damage])
-				await _damage(target, damage)
-		CardData.Effect.HEAL:
-			var rolls := Dice.roll_many(card.dice_count, card.die)
-			await hud.show_dice("Healing: %dd%d + %d" % [card.dice_count, card.die, card.bonus], card.die, rolls)
-			var amount := Dice.total(rolls) + card.bonus
-			target.heal(amount)
-			hud.log_line("%s regains [b]%d[/b] HP." % [_name(target), amount])
-		CardData.Effect.BLESS:
-			for h in living_heroes():
-				if Board.distance(fig.cell, h.cell) <= card.card_range:
-					h.bless_until_round = round_number + card.duration - 1
-					h.show_float_text("Blessed", Color(1.0, 0.9, 0.5))
-			hud.log_line("A pale light settles on the party. Attacks gain a d4 for %d rounds." % card.duration)
+		CardData.Effect.MAGIC_FIGHT:
+			var damage := card.undead_damage if target.stats.is_undead else 1
+			await _fight(fig, target, true, card.title, true, damage)
 		CardData.Effect.SLEEP:
-			var sleepers := 0
-			for m in living_monsters():
-				if Board.distance(cell, m.cell) <= card.area_radius and not m.stats.is_undead:
-					m.fall_asleep(card.duration)
-					sleepers += 1
-			hud.log_line("%d %s slump to the floor, asleep." % [sleepers, "monster" if sleepers == 1 else "monsters"])
-		CardData.Effect.DASH:
-			var rolls := Dice.roll_many(card.dice_count, card.die)
-			await hud.show_dice("Dash: %dd%d" % [card.dice_count, card.die], card.die, rolls)
-			moves_left += Dice.total(rolls)
-			hud.log_line("%s dashes: [b]%d[/b] more squares." % [_name(fig), Dice.total(rolls)])
-	_check_victory()
+			fig.face(target.position)
+			target.fall_asleep(card.amount)
+			hud.log_line("%s slumps to the floor, asleep." % _name(target))
+		CardData.Effect.HEAL:
+			target.heal(card.amount)
+			hud.log_line("%s regains [b]%d[/b] Lives." % [_name(target), card.amount])
+		CardData.Effect.TELEPORT:
+			await fig.teleport_to(cell)
+	_check_end()
 
 
-# --- Combat ----------------------------------------------------------------
+# --- Fights ----------------------------------------------------------------
 
-## d20 + bonus (+ d4 if blessed) against armour class. On a hit, rolls `dice`
-## (a list of [count, die]) plus `flat`. A natural 20 always hits and doubles
-## the dice; a natural 1 always misses. `extra_dice` adds more of the first die on a hit.
-func _attack(attacker: Figure, defender: Figure, bonus: int, what: String, dice: Array, flat: int, extra_dice := 0) -> void:
-	var d20 := Dice.roll(20)
-	var total := d20 + bonus
-	var ac := defender.stats.armor_class
-	await hud.show_dice("%s attacks %s: d20 + %d vs AC %d" % [attacker.stats.display_name, defender.stats.display_name, bonus, ac], 20, [d20])
-	if attacker.bless_until_round >= round_number and attacker.stats.is_hero:
-		var blessing := Dice.roll(4)
-		await hud.show_dice("Bless: +d4", 4, [blessing])
-		total += blessing
-	await attacker.play_attack(defender)
-
-	var crit := d20 == 20
-	var hit := d20 != 1 and (crit or total >= ac)
-	if not hit:
-		var why := "a natural 1" if d20 == 1 else "%d" % total
-		hud.log_line("%s's %s: %s, a miss." % [_name(attacker), what, why])
-		defender.show_float_text("Miss", Color(0.8, 0.8, 0.8))
-		return
-
-	var rolls: Array = []
-	var dice_text: Array[String] = []
-	for i in dice.size():
-		var count: int = dice[i][0] + (extra_dice if i == 0 else 0)
-		if crit:
-			count *= 2
-		var die: int = dice[i][1]
-		rolls.append_array(Dice.roll_many(count, die))
-		dice_text.append("%dd%d" % [count, die])
-	await hud.show_dice("Damage: %s + %d" % [" + ".join(PackedStringArray(dice_text)), flat], 0 if dice.size() > 1 else int(dice[0][1]), rolls)
-	var damage := Dice.total(rolls) + flat
-	if crit:
-		hud.log_line("%s rolls a [color=#f5c040]NATURAL 20[/color]! The %s bites deep: [b]%d[/b] damage." % [_name(attacker), what, damage])
-		defender.show_float_text("CRITICAL!", Color(0.95, 0.75, 0.25))
+## A Talisman-style fight: both sides roll 1d6 and add Strength (or Craft in a
+## magic fight). The higher total wins and the loser loses a Life; a tie is a
+## standoff. A hero about to lose spends a Fate point to reroll, if they have one.
+## In a `ranged` fight (a spell) the attacker is never hurt, and a losing
+## defender loses `damage` Lives.
+func _fight(attacker: Figure, defender: Figure, magic: bool, what: String, ranged := false, damage := 1) -> void:
+	magic = magic or attacker.stats.fights_with_craft or defender.stats.fights_with_craft
+	if ranged:
+		attacker.face(defender.position)
 	else:
-		hud.log_line("%s hits with the %s (%d): [b]%d[/b] damage." % [_name(attacker), what, total, damage])
-	await _damage(defender, damage)
+		await attacker.play_attack(defender)
+	var a := await _roll_for(attacker, defender, magic)
+	var d := await _roll_for(defender, attacker, magic)
+	if a < d and attacker.fate_left > 0 and not ranged:
+		a = await _use_fate(attacker, defender, magic)
+	elif d < a and defender.fate_left > 0:
+		d = await _use_fate(defender, attacker, magic)
 
-
-func _damage(target: Figure, amount: int) -> void:
-	await target.take_damage(amount)
-	if not target.is_alive():
-		hud.log_line("[color=#c33]%s falls.[/color]" % target.stats.display_name)
+	var how := "%s (%d against %d)" % [what, a, d]
+	if a == d:
+		hud.log_line("%s and %s are evenly matched: %s. A standoff." % [_name(attacker), _name(defender), how])
+		defender.show_float_text("Standoff", Color(0.8, 0.8, 0.8))
+	elif a > d:
+		hud.log_line("%s wins the fight: %s." % [_name(attacker), how])
+		await _lose_lives(defender, damage)
+	elif ranged:
+		hud.log_line("%s resists the %s (%d against %d)." % [_name(defender), what, d, a])
+		defender.show_float_text("Resisted", Color(0.8, 0.8, 0.8))
+	else:
+		hud.log_line("%s loses the fight: %s." % [_name(attacker), how])
+		await _lose_lives(attacker, 1)
 	_refresh_ui()
 
 
-func _check_victory() -> void:
+## One side's roll: 1d6 (best of two for the Fighter in Strength fights) plus bonus.
+func _roll_for(f: Figure, opponent: Figure, magic: bool) -> int:
+	var dice := Dice.roll_many(2 if f.stats.best_of_two and not magic else 1, 6)
+	var bonus := _fight_bonus(f, opponent, magic)
+	var stat := "Craft" if magic else "Strength"
+	var best := " (best of two)" if dice.size() > 1 else ""
+	await hud.show_dice("%s: d6 + %d %s%s" % [f.stats.display_name, bonus, stat, best], 6, dice)
+	return int(dice.max()) + bonus
+
+
+func _fight_bonus(f: Figure, opponent: Figure, magic: bool) -> int:
+	if magic:
+		return f.stats.craft
+	var bonus := f.stats.strength + f.stats.weapon_bonus
+	if opponent.stats.is_undead:
+		bonus += f.stats.bonus_vs_undead
+	return bonus
+
+
+func _use_fate(f: Figure, opponent: Figure, magic: bool) -> int:
+	f.fate_left -= 1
+	hud.log_line("%s spends a Fate point to reroll." % _name(f))
+	f.show_float_text("Fate!", Color(0.7, 0.85, 1.0))
+	return await _roll_for(f, opponent, magic)
+
+
+## Armour gets a roll to save each lost Life.
+func _lose_lives(f: Figure, amount: int) -> void:
+	if f.stats.armour_save > 0:
+		var save := Dice.roll(6)
+		await hud.show_dice("%s's %s saves on %d+" % [f.stats.display_name, f.stats.armour_name, f.stats.armour_save], 6, [save])
+		if save >= f.stats.armour_save:
+			hud.log_line("%s's %s turns the blow." % [_name(f), f.stats.armour_name])
+			f.show_float_text("Saved", Color(0.8, 0.85, 0.9))
+			return
+	await f.lose_lives(amount)
+	if not f.is_alive():
+		hud.log_line("[color=#c33]%s falls.[/color]" % f.stats.display_name)
+
+
+## Ends the quest if one side is wiped out. Returns true if it ended.
+func _check_end() -> bool:
+	if phase == Phase.OVER:
+		return true
+	if living_heroes().is_empty():
+		_finish(false)
+		return true
 	if living_monsters().is_empty():
 		_finish(true)
+		return true
+	return false
 
 
 func _finish(won: bool) -> void:
@@ -382,7 +369,7 @@ func _finish(won: bool) -> void:
 	if won:
 		var fallen := heroes.size() - living_heroes().size()
 		var cost := "Nobody was lost." if fallen == 0 else "%d of you will not leave this cellar." % fallen
-		hud.show_end("VICTORY", "The goblins lie still. %s" % cost, true)
+		hud.show_end("VICTORY", "The cellar falls silent. %s" % cost, true)
 	else:
 		hud.show_end("THE PARTY HAS FALLEN", "No one in Alvia will remember your names.", false)
 
@@ -393,8 +380,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		var cell := _cell_under_mouse(event.position)
 		board.set_hover(cell)
-		if phase == Phase.HERO and selected_card != null and selected_card.target == CardData.Target.AREA:
-			_show_highlights(cell)
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			_on_cell_clicked(_cell_under_mouse(event.position))
@@ -430,9 +415,7 @@ func _on_card_pressed(index: int) -> void:
 	var card: CardData = active.stats.cards[index]
 	if not active.can_play(card):
 		return
-	if card.target == CardData.Target.SELF:
-		await _run(func(): await play_card(card, active.cell))
-	elif selected_card == card:
+	if selected_card == card:
 		_cancel_card()
 	else:
 		selected_card = card
@@ -478,7 +461,7 @@ func _run(action: Callable) -> void:
 		return
 	phase = Phase.HERO
 	_refresh_ui()
-	if has_acted and has_rolled and moves_left == 0:
+	if not active.is_alive() or (has_acted and has_rolled and moves_left == 0):
 		_on_end_turn()
 
 
@@ -492,10 +475,10 @@ func _refresh_ui() -> void:
 		if not h.is_alive():
 			lines.append("%s[color=#933]%s, fallen[/color]" % [marker, h.stats.display_name])
 			continue
-		var hp_color := "#e66" if h.hp * 2 <= h.stats.max_hp else "#ddd"
-		var extra := "  · blessed" if h.bless_until_round >= round_number else ""
-		lines.append("%s[b]%s[/b] [color=#888](%s)[/color]  [color=%s]%d/%d HP[/color]  · AC %d%s" % [
-			marker, h.stats.display_name, who, hp_color, h.hp, h.stats.max_hp, h.stats.armor_class, extra])
+		var lives_color := "#e66" if h.lives * 2 <= h.stats.lives else "#ddd"
+		var s := h.stats
+		lines.append("%s[b]%s[/b] [color=#888](%s)[/color]  [color=%s]Lives %d/%d[/color]  · Str %d  · Craft %d  · Fate %d" % [
+			marker, s.display_name, who, lives_color, h.lives, s.lives, s.strength + s.weapon_bonus, s.craft, h.fate_left])
 	hud.set_party("\n".join(PackedStringArray(lines)))
 
 	var my_turn := phase == Phase.HERO
@@ -515,25 +498,20 @@ func _refresh_ui() -> void:
 	_reachable = {}
 	if my_turn:
 		_reachable = reachable_cells()
-		_show_highlights(Vector2i(-1, -1))
+		_show_highlights()
 	elif phase != Phase.BUSY:
 		board.clear_highlights()
 
 
-func _show_highlights(hover: Vector2i) -> void:
+func _show_highlights() -> void:
 	if selected_card != null:
 		var targets := card_targets(active, selected_card)
 		match selected_card.target:
 			CardData.Target.ALLY:
 				board.show_ally_cells(targets)
-			CardData.Target.AREA:
+			CardData.Target.EMPTY_SQUARE:
 				board.clear_highlights()
-				if targets.has(hover):
-					var area: Array = []
-					for x in range(-selected_card.area_radius, selected_card.area_radius + 1):
-						for y in range(-selected_card.area_radius, selected_card.area_radius + 1):
-							area.append(hover + Vector2i(x, y))
-					board.show_area_cells(area)
+				board.show_area_cells(targets)
 			_:
 				board.show_attack_cells(targets, true)
 		return
@@ -586,13 +564,6 @@ func occupied_except(me: Figure) -> Dictionary:
 		if f != me:
 			occupied[f.cell] = true
 	return occupied
-
-
-func _hero_next_to(target: Figure, besides: Figure) -> bool:
-	for h in living_heroes():
-		if h != besides and Board.are_adjacent(h.cell, target.cell):
-			return true
-	return false
 
 
 func _name(f: Figure) -> String:
