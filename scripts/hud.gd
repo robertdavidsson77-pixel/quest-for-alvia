@@ -252,6 +252,9 @@ func _build_end_screen(root: Control) -> void:
 	var credits := _make_label("Music: \"Dark Quest\" by Alexandr Zhelanov (CC-BY 4.0)  ·  \"Dark Descent\" by Matthew Pablo (CC-BY 3.0)", 14, Color(BONE, 0.6))
 	credits.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(credits)
+	var model_credits := _make_label("3D models from OpenDungeons by surt, xGhostx7, Skorpio, Danimal, Nobiax and the Summoning Wars team (CC0 / CC-BY-SA 3.0)", 14, Color(BONE, 0.6))
+	model_credits.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(model_credits)
 
 
 ## Anchors `control` to a corner or edge of the screen, then offsets it by `rect`.
