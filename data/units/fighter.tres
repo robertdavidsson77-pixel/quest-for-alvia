@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="UnitStats" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/unit_stats.gd" id="1_stats"]
+
+[resource]
+script = ExtResource("1_stats")
+display_name = "Fighter"
+is_hero = true
+max_hp = 13
+armor_class = 16
+attack_bonus = 5
+weapon_name = "longsword"
+damage_dice_count = 1
+damage_die = 8
+damage_bonus = 3
+speed = 0
+color = Color(0.4, 0.45, 0.55, 1)
+model_height = 1.0
