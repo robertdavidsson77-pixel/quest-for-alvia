@@ -166,30 +166,37 @@ func _hero_move(cell: Vector2i) -> void:
 func _open_door(cell: Vector2i) -> void:
 	phase = Phase.BUSY
 	board.clear_highlights()
-	hud.log_line("The door groans open...")
-	camera_rig.focus_on(board.cell_to_world(cell))
+	hud.log_line("You put your shoulder to the door...")
+	camera_rig.close_in(board.cell_to_world(cell))
 	Sound.play("door_creak")
+	await board.shudder_door(cell)
+	await _beat()
+	hud.log_line("It groans open. Cold air, and the smell of rot.")
 	Sound.play("door")
+	camera_rig.shake(0.08)
 	await board.open_door(cell)
+	camera_rig.release()
+	await _beat()
 	for m in monsters:
 		if not m.visible and board.is_room_revealed(board.room_at(m.cell)):
 			await _wake(m)
+	camera_rig.focus_on(hero.position)
 	phase = Phase.HERO
 	_refresh_hero_ui()
 
 
-## A monster steps out of the dark: it pops up and turns to face the hero.
+## A monster rises out of the shadows: first only its red eyes in the dark,
+## then the rest of it, turning to face the hero.
 func _wake(m: Figure) -> void:
+	camera_rig.close_in(m.position)
 	m.face(hero.position)
-	var final_scale := m.scale
-	m.scale = Vector3(final_scale.x, 0.01, final_scale.z)
 	m.visible = true
-	Sound.play(m.stats.voice + "_wake")
-	Sound.set_combat(true)
-	var tween := create_tween()
-	tween.tween_property(m, "scale", final_scale, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	await tween.finished
-	m.show_float_text("!", Color(0.95, 0.3, 0.2))
+	await m.emerge(func(): Sound.set_combat(true))
+	camera_rig.shake(0.12)
+	Effects.dust_puff(self, m.position, 14, 0.4)
+	m.show_float_text("!", Color(0.95, 0.3, 0.2), 1.3)
+	await get_tree().create_timer(0.6).timeout
+	camera_rig.release()
 	hud.log_line("[color=#c66]A %s! It has seen you.[/color]" % m.stats.display_name.to_lower())
 
 

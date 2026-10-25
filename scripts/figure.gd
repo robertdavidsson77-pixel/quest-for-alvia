@@ -16,6 +16,8 @@ var board: Board
 var _body: Node3D
 var _label: Label3D
 var _body_material: StandardMaterial3D
+var _eyes: Array[MeshInstance3D] = []
+var _eye_material: StandardMaterial3D
 
 
 func setup(unit_stats: UnitStats, on_board: Board, start: Vector2i) -> void:
@@ -138,9 +140,44 @@ func show_float_text(text: String, color: Color, size := 1.0) -> void:
 	tween.tween_callback(label.queue_free)
 
 
+## Steps out of the shadows: first only two red eyes kindle in the dark, then
+## the body rises up out of blackness. `on_roar` is called as it shows itself.
+## (The eyes stay lit, faintly.)
+func emerge(on_roar: Callable) -> void:
+	var hidden: Array[Node3D] = []
+	for child in get_children() + _body.get_children():
+		if child is MeshInstance3D and not _eyes.has(child) and child.visible:
+			child.visible = false
+			hidden.append(child)
+	_label.visible = false
+	for eye in _eyes:
+		eye.visible = true
+	if _eye_material:
+		var glow := create_tween()
+		glow.tween_property(_eye_material, "emission_energy_multiplier", 8.0, 0.5).from(0.0)
+		await glow.finished
+	await get_tree().create_timer(0.6).timeout
+
+	Sound.play(stats.voice + "_wake")
+	on_roar.call()
+	for node in hidden:
+		node.visible = true
+	_body.scale = Vector3(1, 0.05, 1)
+	_body_material.albedo_color = Color.BLACK
+	var tween := create_tween()
+	tween.tween_property(_body, "scale", Vector3.ONE, 0.7).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(_body_material, "albedo_color", stats.color, 1.0)
+	if _eye_material:
+		tween.parallel().tween_property(_eye_material, "emission_energy_multiplier", 3.0, 1.0)
+	await tween.finished
+	_label.visible = true
+
+
 func _die() -> void:
 	Sound.play(stats.voice, 0.0)
 	_label.visible = false
+	if _eye_material:
+		create_tween().tween_property(_eye_material, "emission_energy_multiplier", 0.0, 1.0)
 	await get_tree().create_timer(0.25).timeout
 	var tween := create_tween()
 	# Sag to the knees, then topple.
@@ -201,6 +238,24 @@ func _build_model() -> void:
 	head.material_override = _body_material
 	head.position.y = 0.08 + torso_mesh.height + head_mesh.radius * 0.8
 	_body.add_child(head)
+
+	if not stats.is_hero:
+		_eye_material = StandardMaterial3D.new()
+		_eye_material.albedo_color = Color(1, 0.1, 0.05)
+		_eye_material.emission_enabled = true
+		_eye_material.emission = Color(1, 0.08, 0.02)
+		_eye_material.emission_energy_multiplier = 0.0
+		var eye_mesh := SphereMesh.new()
+		eye_mesh.radius = 0.03 * h + 0.012
+		eye_mesh.height = eye_mesh.radius * 2.0
+		for side in [-1, 1]:
+			var eye := MeshInstance3D.new()
+			eye.mesh = eye_mesh
+			eye.material_override = _eye_material
+			eye.position = head.position + Vector3(side * head_mesh.radius * 0.4, head_mesh.radius * 0.15, -head_mesh.radius * 0.9)
+			eye.visible = false
+			_body.add_child(eye)
+			_eyes.append(eye)
 
 	# The weapon points forward (-Z), so you can see which way a figure faces.
 	var blade_mat := StandardMaterial3D.new()
